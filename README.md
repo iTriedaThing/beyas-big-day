@@ -67,7 +67,7 @@ Routine completed units of work are committed and related commits are pushed tog
 
 ## Verification performed
 
-- `node --test tests/*.test.mjs`: 15 tests passed, covering cents, forecast precedence, zero/unknown values, deposits, refunds/credits, installments, category overages, headcount, CSV escaping, time zones, retry persistence, stale updates, refresh coordination, and sign-out races.
+- `node --test tests/*.test.mjs`: 16 tests passed, covering cents, forecast precedence, zero/unknown values, deposits, refunds/credits, installments, category overages, headcount, CSV escaping, time zones, retry persistence, stale updates, refresh coordination, sign-out races, and browser fetch receiver binding for sign-in and data requests.
 - `node scripts/check.mjs`: syntax, entry assets, and relative asset checks passed. There is no separate lint/typecheck/build toolchain configured.
 - Migration applied successfully to isolated **PostgreSQL 16.4** with test-only Auth stubs. [tests/access.sql](tests/access.sql) passed: two-member reads, outsider isolation across every table, signed-out denial, administrative memberships, same-wedding/expense references, immutable ledger, actor checks, retry deduplication, atomic purchase rollback, version conflicts, preserved quotes, and amendment history.
 - Supabase CLI v3.1.0 security advisors against that local test database: **No issues found**.

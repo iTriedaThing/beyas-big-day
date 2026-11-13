@@ -4,6 +4,20 @@ import {Api} from '../docs/api.js';
 const storage=()=>{const map=new Map();return {getItem:k=>map.get(k) ?? null,setItem:(k,v)=>map.set(k,v),removeItem:k=>map.delete(k)};};
 const session={user:{id:'partner-a'},access_token:'test-token',refresh_token:'test-refresh',expires_at:9999999999};
 const config={supabaseUrl:'https://example.supabase.co',publishableKey:'sb_publishable_test'};
+test('default fetch preserves the browser global receiver for auth and data requests',async t=>{
+  const requests=[];
+  t.mock.method(globalThis,'fetch',async function(url){
+    assert.ok(this===globalThis,'browser fetch must receive the global object, not the Api instance');
+    requests.push(url);
+    return Response.json(url.includes('/auth/') ? {...session,expires_in:3600} : []);
+  });
+  const api=new Api(config,storage());
+  await api.signIn('test@example.invalid','test-only');
+  await api.request('expenses');
+  assert.equal(requests.length,2);
+  assert.ok(requests[0].includes('/auth/v1/token?grant_type=password'));
+  assert.ok(requests[1].endsWith('/rest/v1/expenses'));
+});
 test('lost-response payment retry survives reload and reuses exact payload and UUID',async()=>{
   const s=storage(),requests=[];
   const api=new Api(config,s,async(_,options)=>{requests.push(JSON.parse(options.body));throw new TypeError('Network error');});
