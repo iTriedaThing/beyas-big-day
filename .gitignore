@@ -1,0 +1,6 @@
+.local/
+.env*
+!.env.example
+node_modules/
+coverage/
+*.log
