@@ -6,7 +6,7 @@ A private wedding budget for two people: GitHub Pages serves `docs/`; a dedicate
 
 ## What ships
 
-- Email/password sign-in for administrator-provisioned accounts, shared wedding settings, editable categories and item targets, planned expenses, and booked agreements.
+- Email/password sign-in for administrator-provisioned accounts, email-link confirmation and password recovery, shared wedding settings, editable categories and item targets, planned expenses, and booked agreements.
 - Vendor contacts and side-by-side package quotes, including fixed/per-guest prices, saved headcount, inclusions, ratings, and notes. A preferred quote contributes once to forecast. Booking updates the existing expense; unused quotes stay available. Booked quotes are preserved; agreed-price changes require an amendment with history.
 - Deposits, payments, refunds, dated installments, partial balances, overdue flags, vendor credits, separate payer/recorder attribution, category overages, and exact dollar tables.
 - **Add expense → Purchase paid in full** records the agreed purchase and its payment in one database transaction. One save, no deposit workflow. Zero-cost purchases record an explicit zero agreement without a payment.
@@ -31,7 +31,7 @@ For a **mock-data UI preview**, use `node scripts/preview-fixture.mjs`, open `ht
 
 1. Use a separate wedding-planner Supabase project. This repository is configured for **beyas-big-day** (`nennjenlgfkblsmpkzfr`, US East). The approved [migration](supabase/migrations/20261113132432_shared_budget.sql) was applied there on November 13, 2026. Do not apply it a second time to that project; these steps also describe setup for a fresh project.
 2. For a fresh project, apply the migration once using your installed Supabase CLI’s migration workflow after reviewing its current `--help`, or a migration tool that records history. The file was created with CLI **v3.1.0**; its version now matches the history recorded by Supabase’s migration tool. Do not run `tests/bootstrap.sql` on Supabase: it is only a disposable plain-Postgres Auth/role stub.
-3. In Auth, enable email/password sign-in. Create/confirm two partner users and give each their own password through a secure account setup process. Disable public signup for this private release. The frontend deliberately has no signup, invitation-management, or password-reset flow; recovery/account changes are administrative for now.
+3. In Auth, enable email/password sign-in. Create/confirm two partner users and give each their own password through a secure account setup process. Disable public signup for this private release. The frontend has no signup or invitation-management flow; account creation and membership changes remain administrative. It supports **Forgot password? → reset email → choose a new password → sign in**, using the default Supabase implicit email-link flow.
 4. Copy [provision.example.sql](supabase/provision.example.sql) into the SQL editor, substitute the two Auth UUIDs, review names/currency/time zone, and run it once. It creates a private wedding, two memberships, and blank starter categories. Record the returned wedding UUID for access checks. Membership changes remain administrative; browser users cannot grant access or create weddings.
 
    The configured `beyas-big-day` project already has the shared wedding, Ben and Maya’s memberships, and nine starter categories, provisioned on November 13, 2026. Do not run provisioning again there. Each partner must confirm their own email before signing in.
@@ -47,9 +47,9 @@ The repository remote is [iTriedaThing/beyas-big-day](https://github.com/iTrieda
 
 After reviewing the feature branch and authorizing its promotion to `main` and Pages publishing:
 
-1. For this initially empty repository, establish `main` from the reviewed feature-branch delivery, then push `main`; subsequent changes can use feature branches and pull requests. Do not publish private wedding data, exports, or credentials in Git.
+1. Start a meaningful typed branch from current `main`, commit verified units there, push related commits together, and open a PR into `main`. Do not commit or push implementation directly to `main`. Merge only with approval; merging into `main` triggers Pages publication. Do not publish private wedding data, exports, or credentials in Git.
 2. Under **Settings → Pages → Deploy from a branch**, select **main → /docs**. All entry assets use relative paths; there is no SPA route rewrite or build action to configure.
-3. Set Supabase’s production Site URL and allowed redirect URL to the exact Pages project URL, including repository path and trailing slash, for example `https://OWNER.github.io/REPOSITORY/`. Password sign-in currently stays on the page; exact return URLs also prepare administrative email account flows. Consult [Supabase redirect configuration](https://supabase.com/docs/guides/auth/redirect-urls).
+3. Set Supabase’s production Site URL and allowed redirect URL to the exact Pages project URL, including repository path and trailing slash: `https://itriedathing.github.io/beyas-big-day/`. Email links return to this page. The app validates the returned session with Supabase before using it, immediately removes tokens from the URL, and shows a new-password form for recovery/invite links. Confirmation links restore a normal session. Expired, malformed, or unsupported PKCE-code links show an actionable error; use the default implicit-flow email templates. Consult [Supabase redirect configuration](https://supabase.com/docs/guides/auth/redirect-urls).
 4. Open the published URL in a signed-out browser before signing in. Run the checks in [VERIFICATION.md](VERIFICATION.md) with test data before entering real prices or payments.
 
 Routine completed units of work are committed and related commits are pushed together under the user’s standing Git workflow preference. No hosted migration, account provisioning, release promotion, or deployment is implied by a commit or push; those actions need separate authorization.
@@ -67,12 +67,13 @@ Routine completed units of work are committed and related commits are pushed tog
 
 ## Verification performed
 
-- `node --test tests/*.test.mjs`: 16 tests passed, covering cents, forecast precedence, zero/unknown values, deposits, refunds/credits, installments, category overages, headcount, CSV escaping, time zones, retry persistence, stale updates, refresh coordination, sign-out races, and browser fetch receiver binding for sign-in and data requests.
+- `node --test tests/*.test.mjs`: 26 tests passed, covering budget calculations, retry persistence, conflicts, refresh/sign-out behavior, native browser fetch binding, and email-link/password-recovery handling. Recovery checks cover URL cleanup, server validation, expired/invalid links, session persistence, authenticated password updates, failures, sign-out races, and reset-email request payloads.
 - `node scripts/check.mjs`: syntax, entry assets, and relative asset checks passed. There is no separate lint/typecheck/build toolchain configured.
 - Migration applied successfully to isolated **PostgreSQL 16.4** with test-only Auth stubs. [tests/access.sql](tests/access.sql) passed: two-member reads, outsider isolation across every table, signed-out denial, administrative memberships, same-wedding/expense references, immutable ledger, actor checks, retry deduplication, atomic purchase rollback, version conflicts, preserved quotes, and amendment history.
 - Supabase CLI v3.1.0 security advisors against that local test database: **No issues found**.
 - Hosted `beyas-big-day` after the approved migration: all nine tables have RLS enabled, no anonymous SELECT or authenticated TRUNCATE grants, all nine tables are published to Realtime, and security advisors returned no issues. All ten signed-out Data API checks passed with database permission denials. The wedding and two memberships are provisioned; hosted RLS checks under each member’s database role see the same wedding, both members, and all nine categories, while an unrelated simulated user sees no records. Real two-account sign-in/sync verification remains outstanding.
 - Browser fixture checks: sign-in form, deposit totals, single-entry paid-in-full purchase, vendor/quote display, no console warnings/errors, and phone-width document geometry. These are **mocked UI checks**, not proof of hosted Auth, email delivery, or Realtime. Complete the hosted checks separately.
+- Recovery browser fixtures: email-link tokens disappear from the URL, recovery survives reload, mismatched passwords are rejected, a synthetic password update returns to sign-in, and reset requests show a generic success message. These checks use no real account credentials and send no email.
 
 To repeat SQL tests on a **new disposable database** with `psql`:
 

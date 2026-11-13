@@ -9,6 +9,16 @@ Use the same test wedding and two separately provisioned Auth accounts. Do not s
 3. Open the same URL on phone B (or a separate browser/profile) and sign in as partner B. Both should see the same wedding, settings, and starter categories. The payer selector should list both partner names. A fresh tab requires its own sign-in.
 4. Keep both screens open. Confirm **Live updates connected**. Change a category name on A; B should refetch automatically. If Realtime is unavailable, the app reports reconnection and polls every 20 seconds while visible. Switch B to another app and back; focus refresh should also show A’s change. Verify live delivery separately from the polling fallback by making a change and observing it arrive promptly.
 
+## Password recovery and confirmation emails
+
+1. After the recovery fix is published, choose **Forgot password?**, enter your account email, and send one reset request. A generic success message should avoid revealing whether an account exists. Sending an email does not itself change the password.
+2. Open the newest email link. It must return to the exact Pages URL and show **Choose a new password**, rather than the usual login form. URL fragments containing tokens must disappear immediately. An expired/used link should give a useful error and let you request another email.
+3. Choose and confirm a new password yourself; never send the password or reset link to anyone. Mismatched passwords must be rejected before a request. After successful submission, the app should return to sign-in with a success message. Sign in using the **new** password and verify your existing wedding data remains intact.
+4. Reload a verified recovery tab before submitting the new password: the reset form should remain available in that tab. Cancel should clear the local recovery session. An offline/failed update should show a retryable error rather than claiming success.
+5. A signup-confirmation link should validate the email session and open the assigned wedding. Supabase can update “last login” when a recovery/confirmation link creates a session; this does not prove that a password sign-in succeeded.
+
+The browser fixture and automated tests use synthetic sessions and never change real account credentials. The account owner must complete the real recovery and password sign-in checks.
+
 ## Budget, vendors, and quotes
 
 1. Add two vendor contacts (or two packages from one vendor). Add a planned **Catering** expense with a **$4,000** target in Food. Add fixed quotes for **$3,800** and **$3,600**, including package contents, contact information, rating, and notes.
