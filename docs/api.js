@@ -1,3 +1,20 @@
+const RESET_LINK_ERROR = 'This sign-in or reset link is invalid or expired. Request a new password reset email.';
+
+// Consume secrets immediately; budget anchors such as #expenses are left alone.
+export function takeAuthRedirect(location, history) {
+  const url = new URL(location.href);
+  const parameters = new URLSearchParams(url.hash.slice(1));
+  const keys = ['access_token', 'refresh_token', 'type', 'error', 'error_code', 'error_description'];
+  const hasCode = url.searchParams.has('code');
+  const hasError = url.searchParams.has('error') || url.searchParams.has('error_code');
+  if (!hasCode && !hasError && !keys.some(key => parameters.has(key))) return null;
+  if (hasCode || hasError) parameters.set('error', 'unsupported_or_expired_link');
+  for (const key of ['code', 'error', 'error_code', 'error_description']) url.searchParams.delete(key);
+  url.hash = '';
+  history.replaceState(null, '', url.pathname + url.search);
+  return parameters;
+}
+
 export class Api {
   constructor(config, storage = sessionStorage, fetcher = globalThis.fetch.bind(globalThis)) {
     this.url = config.supabaseUrl.replace(/\/$/, '');
@@ -13,11 +30,12 @@ export class Api {
     else this.storage.removeItem(this.prefix + 'session');
     this.onSession?.();
   }
-  async auth(path, body) {
+  async auth(path, body, { method = 'POST', accessToken } = {}) {
+    const token = accessToken || (path === 'logout' ? this.session?.access_token : null);
     const res = await this.fetcher(`${this.url}/auth/v1/${path}`, {
-      method: 'POST', headers: { apikey: this.key, 'Content-Type': 'application/json',
-        ...(path === 'logout' && this.session ? { Authorization: `Bearer ${this.session.access_token}` } : {}) },
-      body: JSON.stringify(body), signal: AbortSignal.timeout(20000),
+      method, headers: { apikey: this.key, 'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(20000),
     });
     const result = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -31,12 +49,41 @@ export class Api {
     const s = await this.auth('token?grant_type=password', { email, password });
     this.setSession({ ...s, expires_at: Math.floor(Date.now() / 1000) + s.expires_in });
   }
+  async requestPasswordReset(email, returnUrl) {
+    await this.auth(`recover?redirect_to=${encodeURIComponent(returnUrl)}`, { email });
+  }
+  async acceptAuthRedirect(parameters) {
+    const accessToken = parameters.get('access_token');
+    const refreshToken = parameters.get('refresh_token');
+    const expiresIn = Number(parameters.get('expires_in'));
+    const type = parameters.get('type');
+    if (parameters.has('error') || !accessToken || !refreshToken || !Number.isInteger(expiresIn)
+      || expiresIn <= 0 || expiresIn > 86400 || !['recovery', 'invite', 'signup', 'magiclink'].includes(type)) {
+      throw new Error(RESET_LINK_ERROR);
+    }
+    let user;
+    try { user = await this.auth('user', undefined, { method: 'GET', accessToken }); }
+    catch (error) {
+      if (error.definite) throw new Error(RESET_LINK_ERROR);
+      throw new Error('Could not verify the email link. Check your connection and reopen the link.');
+    }
+    if (!user?.id) throw new Error(RESET_LINK_ERROR);
+    this.setSession({ user, access_token: accessToken, refresh_token: refreshToken,
+      expires_at: Math.floor(Date.now() / 1000) + expiresIn, recovery: type === 'recovery' || type === 'invite' });
+  }
+  async updatePassword(password) {
+    if (!this.session) throw new Error('Open a fresh password reset link before choosing a password.');
+    if (this.session.expires_at < Date.now() / 1000 + 60) await this.refresh();
+    const accessToken = this.session.access_token;
+    const user = await this.auth('user', { password }, { method: 'PUT', accessToken });
+    if (this.session?.access_token === accessToken) this.setSession({ ...this.session, user, recovery: false });
+  }
   async refresh() {
     if (!this.refreshing) this.refreshing = (async () => {
       const originalToken = this.session?.refresh_token;
       try {
         const s = await this.auth('token?grant_type=refresh_token', { refresh_token: originalToken });
-        if (this.session?.refresh_token === originalToken) this.setSession({ ...s, expires_at: Math.floor(Date.now() / 1000) + s.expires_in });
+        if (this.session?.refresh_token === originalToken) this.setSession({ ...s, recovery: !!this.session.recovery, expires_at: Math.floor(Date.now() / 1000) + s.expires_in });
       } catch (error) {
         // Keep the session on network failures; a later reconnect can still refresh it.
         if (error.definite && this.session?.refresh_token === originalToken) this.setSession(null);

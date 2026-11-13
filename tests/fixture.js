@@ -15,7 +15,11 @@ export function installMock() {
   globalThis.fetch=async (url,options={})=>{
     if(!String(url).startsWith('https://fixture.supabase.co/'))return realFetch(url,options);
     const body=options.body ? JSON.parse(options.body):null;
-    if(String(url).includes('/auth/'))return Response.json({user:{id:a,email:'preview@example.invalid'},access_token:'fixture',refresh_token:'fixture',expires_in:3600});
+    if(String(url).includes('/auth/')){
+      if(new URL(url).pathname==='/auth/v1/user')return Response.json({id:a,email:'preview@example.invalid'});
+      if(new URL(url).pathname==='/auth/v1/recover')return Response.json({});
+      return Response.json({user:{id:a,email:'preview@example.invalid'},access_token:'fixture',refresh_token:'fixture',expires_in:3600});
+    }
     const path=String(url).split('/rest/v1/')[1];
     if(path.startsWith('weddings?'))return Response.json([fixture.wedding]);
     if(path==='rpc/budget_snapshot')return Response.json(structuredClone(fixture));

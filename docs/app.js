@@ -1,8 +1,9 @@
 import { config } from './config.js';
-import { Api, subscribe } from './api.js';
+import { Api, subscribe, takeAuthRedirect } from './api.js';
 import { cents, money, quoteTotal, summarize, installmentBalance, csv, localDate } from './budget.js';
 
 const $ = s => document.querySelector(s);
+const initialAuthRedirect = takeAuthRedirect(window.location, window.history);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const btn = (action, label, id = '', cls = 'secondary') => `<button class="${cls}" data-action="${action}" data-id="${esc(id)}">${label}</button>`;
 const input = (name, label, value = '', type = 'text', extra = '') => `<label for="f-${name}">${label}</label><input id="f-${name}" name="${name}" type="${type}" value="${esc(value)}" ${extra}>`;
@@ -11,7 +12,7 @@ const select = (name, label, options, value = '') => `<label for="f-${name}">${l
 const amount = (name, label, value = null, required = false) => input(name, label, value === null ? '' : (value / 100).toFixed(2), 'text', `inputmode="decimal" ${required ? 'required' : ''} maxlength="14"`);
 const dialog = $('#editor');
 let api, data, totals, weddingId, tab = 'budget', selectedExpense = '', selectedCategory = '', stopLive, loading = false, loadAgain = false, syncStatus = 'Connecting…', noticeTimer;
-let sessionEpoch = 0;
+let sessionEpoch = 0, handlingAuthRedirect = false;
 const fmt = value => money(value, data.wedding.currency);
 const vendorName = id => data.vendors.find(v => v.id === id)?.name || 'No vendor linked';
 const memberName = id => data.members.find(m => m.user_id === id)?.display_name || id;
@@ -32,7 +33,7 @@ function resetPrivateUI() {
 }
 function renderLogin(message = '') {
   $('#account').replaceChildren();
-  $('#main').innerHTML = `<section class="panel login"><p class="eyebrow">JUST THE TWO OF YOU</p><h1>Your day, together.</h1><p>Sign in to your private wedding budget. Your partner’s changes will appear here too.</p><form id="login">${input('email', 'Email', '', 'email', 'required autocomplete="username"')}${input('password', 'Password', '', 'password', 'required autocomplete="current-password"')}<p id="login-error" role="alert">${esc(message)}</p><button type="submit">Sign in</button></form><p class="muted">Use your administrator-provisioned account. No wedding access? Ask the person setting up your planner to add your account as a member.</p></section>`;
+  $('#main').innerHTML = `<section class="panel login"><p class="eyebrow">JUST THE TWO OF YOU</p><h1>Your day, together.</h1><p>Sign in to your private wedding budget. Your partner’s changes will appear here too.</p><form id="login">${input('email', 'Email', '', 'email', 'required autocomplete="username"')}${input('password', 'Password', '', 'password', 'required autocomplete="current-password"')}<p id="login-error" role="alert">${esc(message)}</p><button type="submit">Sign in</button></form><p>${btn('reset-request', 'Forgot password?')}</p><p class="muted">Use your administrator-provisioned account. No wedding access? Ask the person setting up your planner to add your account as a member.</p></section>`;
   $('#login').onsubmit = async event => {
     event.preventDefault(); const form = event.currentTarget, fields = new FormData(form);
     form.querySelector('button').disabled = true;
@@ -41,9 +42,56 @@ function renderLogin(message = '') {
     finally { if (form.isConnected) form.querySelector('button').disabled = false; }
   };
 }
+function renderResetRequest() {
+  $('#main').innerHTML = `<section class="panel login"><p class="eyebrow">GET BACK TO YOUR PLAN</p><h1>Reset your password.</h1><p>We’ll email you a link to choose a new password.</p><form id="reset-request">${input('email','Account email','','email','required autocomplete="username"')}<p id="reset-message" role="status"></p><button type="submit">Send reset email</button></form><p>${btn('back-to-login','Back to sign in')}</p></section>`;
+  $('#reset-request').onsubmit = async event => {
+    event.preventDefault(); const form = event.currentTarget;
+    const email = new FormData(form).get('email').trim();
+    form.querySelector('button').disabled = true;
+    try {
+      await api.requestPasswordReset(email, window.location.origin + window.location.pathname);
+      if (!form.isConnected) return;
+      $('#reset-message').textContent = 'If an account exists for that email, a reset link has been sent. Open the newest email and choose your new password on this page.';
+    } catch (error) { if (form.isConnected) $('#reset-message').textContent = error.message; }
+    finally { if (form.isConnected) form.querySelector('button').disabled = false; }
+  };
+}
+function renderPasswordChange() {
+  $('#main').innerHTML = `<section class="panel login"><p class="eyebrow">YOUR RESET LINK IS VERIFIED</p><h1>Choose a new password.</h1><p>Enter your new password twice. This changes the password for the account in your reset email.</p><form id="password-change">${input('new_password','New password','','password','required minlength="8" autocomplete="new-password"')}${input('confirm_password','Confirm new password','','password','required minlength="8" autocomplete="new-password"')}<p class="muted">Use at least 8 characters. Supabase may require additional strength.</p><p id="password-error" role="alert"></p><button type="submit">Save new password</button></form><p>${btn('cancel-recovery','Cancel and sign out')}</p></section>`;
+  $('#password-change').onsubmit = async event => {
+    event.preventDefault(); const form = event.currentTarget, fields = new FormData(form);
+    if (fields.get('new_password') !== fields.get('confirm_password')) {
+      $('#password-error').textContent = 'The passwords do not match.'; return;
+    }
+    form.querySelector('button').disabled = true;
+    const cancel = $('[data-action="cancel-recovery"]'); cancel.disabled = true;
+    try {
+      await api.updatePassword(fields.get('new_password'));
+      if (!form.isConnected) return;
+      form.reset();
+      // The owner verifies the new credential with an ordinary password sign-in.
+      try { await api.signOut(); } catch { /* signOut always clears the local session */ }
+      resetPrivateUI(); renderLogin('Password updated. Sign in with your new password.');
+    } catch (error) {
+      if (!form.isConnected) return;
+      form.reset();
+      if (!api.session) { resetPrivateUI(); renderLogin('The reset session expired. Request a new password reset email.'); }
+      else $('#password-error').textContent = error.message;
+    } finally { if (form.isConnected) { form.querySelector('button').disabled = false; cancel.disabled = false; } }
+  };
+}
+async function finishAuthRedirect(parameters) {
+  if (!parameters) { await start(); return; }
+  handlingAuthRedirect = true; resetPrivateUI();
+  $('#main').innerHTML = '<p>Verifying your email link…</p>';
+  try { await api.acceptAuthRedirect(parameters); await start(); }
+  catch (error) { api.setSession(null); resetPrivateUI(); renderLogin(error.message); }
+  finally { handlingAuthRedirect = false; }
+}
 async function start() {
   resetPrivateUI();
   if (!api.session) { renderLogin(); return; }
+  if (api.session.recovery) { renderPasswordChange(); return; }
   const epoch = sessionEpoch;
   $('#main').innerHTML = '<p>Loading your shared budget…</p>';
   try {
@@ -283,6 +331,8 @@ function exportCSVs() {
   notify('Exported expense and payment CSVs. Allow multiple downloads if your browser asks. Amounts are integer cents.');
 }
 const actions = {
+  'reset-request': renderResetRequest, 'back-to-login': () => renderLogin(),
+  'cancel-recovery': async () => {try{await api.signOut();}finally{resetPrivateUI();renderLogin();}},
   start, refresh: reload, settings: settingsForm, export: exportCSVs,
   'tab-budget': () => {tab='budget';render();}, 'tab-vendors': () => {tab='vendors';render();},
   'category-new': () => categoryForm(), 'category-edit': categoryForm,
@@ -311,8 +361,12 @@ document.addEventListener('change',event => {
 });
 $('#cancel').onclick = () => dialog.close();
 dialog.addEventListener('cancel',event => {if($('#save').disabled)event.preventDefault();});
-window.addEventListener('focus',() => {if(api?.session) void (data ? reload() : start());});
-window.addEventListener('online',() => {if(api?.session) void (data ? reload() : start());});
+window.addEventListener('focus',() => {if(api?.session && !api.session.recovery && !handlingAuthRedirect) void (data ? reload() : start());});
+window.addEventListener('online',() => {if(api?.session && !api.session.recovery && !handlingAuthRedirect) void (data ? reload() : start());});
+window.addEventListener('hashchange',() => {
+  const parameters = takeAuthRedirect(window.location, window.history);
+  if (api && parameters) void finishAuthRedirect(parameters);
+});
 setInterval(() => {if(api?.session && !document.hidden && data) void reload();},20000);
 
 if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(config.supabaseUrl) || !config.publishableKey.startsWith('sb_publishable_')) {
@@ -320,5 +374,5 @@ if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(config.supabaseUrl) || !config.
 } else {
   api = new Api(config);
   api.onSession=() => {if(api.session && weddingId)connectLive();};
-  void start();
+  void finishAuthRedirect(initialAuthRedirect);
 }
