@@ -44,9 +44,9 @@ For a **mock-data UI preview**, use `node scripts/preview-fixture.mjs`, open `ht
 
 ### Guest list and checklist migration
 
-The additive [guest/checklist migration](supabase/migrations/20261113191958_guests_and_checklist.sql) creates `invitations`, `guests`, and `tasks`, adds an optional planning headcount, and extends the existing snapshot/Realtime subscription data. It enables membership RLS, explicit grants, composite same-wedding references, and optimistic edit versions on every new table. `create_household` saves a household and all its initial guest seats in one transaction using stable client IDs for retries. No real guests, sample prices, or starter tasks are inserted automatically.
+The additive [guest/checklist migration](supabase/migrations/20261113203508_guests_and_checklist.sql) creates `invitations`, `guests`, and `tasks`, adds an optional planning headcount, and extends the existing snapshot/Realtime subscription data. It enables membership RLS, explicit grants, composite same-wedding references, and optimistic edit versions on every new table. `create_household` saves a household and all its initial guest seats in one transaction using stable client IDs for retries. No real guests, sample prices, or starter tasks are inserted automatically.
 
-Apply it only after explicit approval for the target project, then merge the frontend PR. If frontend publication happens first, the new pages show a preparation state while the existing budget continues to work. Planning headcount supplies the default for **new** per-person quotes; it never changes an existing quote or agreement automatically.
+This migration was approved and applied to `beyas-big-day` on November 13, 2026; its filename matches the recorded hosted migration version. Do not apply it again there. For a fresh project, apply it after the base schema with explicit target approval. Then merge the frontend PR. If frontend publication happens first, the new pages show a preparation state while the existing budget continues to work. Planning headcount supplies the default for **new** per-person quotes; it never changes an existing quote or agreement automatically.
 
 Email/password setup follows [Supabase Auth documentation](https://supabase.com/docs/guides/auth/passwords); access controls follow [Supabase RLS guidance](https://supabase.com/docs/guides/database/postgres/row-level-security). The dependency-free client uses the documented [Realtime JSON protocol](https://supabase.com/docs/guides/realtime/protocol), with polling if subscription delivery fails.
 
@@ -84,6 +84,7 @@ Routine completed units of work are committed and related commits are pushed tog
 - Browser fixture checks: sign-in form, deposit totals, single-entry paid-in-full purchase, vendor/quote display, no console warnings/errors, and phone-width document geometry. These are **mocked UI checks**, not proof of hosted Auth, email delivery, or Realtime. Complete the hosted checks separately.
 - Recovery browser fixtures: email-link tokens disappear from the URL, recovery survives reload, mismatched passwords are rejected, a synthetic password update returns to sign-in, and reset requests show a generic success message. These checks use no real account credentials and send no email.
 - Guest/checklist migration and [planner access suite](tests/planner-access.sql) passed in isolated Postgres: atomic household rollback/retries, individual seat counts, same-wedding links, restricted assignees, seed deduplication, version conflicts, member reads and outsider/signed-out denials. Local security advisors returned no issues.
+- After the approved hosted planner migration, all three added tables have RLS enabled, anonymous reads and authenticated truncation are denied, all twelve tables are published to Realtime, and all 13 signed-out API checks passed. The new tables remain empty until the couple enters data or imports the starter checklist. Hosted advisors reported an Auth warning for disabled leaked-password protection; review [the password-security setting](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) separately. No schema-policy warnings were reported.
 - Desktop/390-pixel browser fixtures verified household creation, RSVP changes, search, multiple dietary flags, task completion and progress, repeated starter imports, and responsive layout with no horizontal page overflow or console errors. The fixture uses sample people and dates; none are copied into the live wedding.
 
 To repeat SQL tests on a **new disposable database** with `psql`:
@@ -95,7 +96,7 @@ psql -v ON_ERROR_STOP=1 -d YOUR_DISPOSABLE_DATABASE -f tests/bootstrap.sql -f su
 Then apply/test the additive planner migration in the same disposable database:
 
 ```sh
-psql -v ON_ERROR_STOP=1 -d YOUR_DISPOSABLE_DATABASE -f supabase/migrations/20261113191958_guests_and_checklist.sql -f tests/planner-access.sql
+psql -v ON_ERROR_STOP=1 -d YOUR_DISPOSABLE_DATABASE -f supabase/migrations/20261113203508_guests_and_checklist.sql -f tests/planner-access.sql
 ```
 
 Bootstrap creates test roles if absent and creates the Auth stub schema that a normal Supabase project already has. Access-test fixtures run in a transaction and roll back. Do not run bootstrap against a shared or production database. Use a fresh disposable database for each full migration run.
