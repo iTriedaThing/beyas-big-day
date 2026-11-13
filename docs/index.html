@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A private, shared wedding budget for two.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <title>Beya’s big day · Shared budget</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <header><a class="brand" href="./">Beya’s big day <span>THE PLAN, TOGETHER</span></a><div id="account"></div></header>
+  <main id="main"><p>Loading your shared budget…</p></main>
+  <p id="notice" role="status" aria-live="polite"></p>
+  <dialog id="editor" aria-labelledby="dialog-title"><form id="edit-form"><h2 id="dialog-title"></h2><div id="fields"></div><p id="form-error" role="alert"></p><div class="actions"><button type="button" id="cancel" class="secondary">Cancel</button><button type="submit" id="save">Save</button></div></form></dialog>
+  <footer>One plan. Two people. Every little detail.</footer>
+</body>
+</html>
