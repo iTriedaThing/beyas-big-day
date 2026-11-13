@@ -1,4 +1,6 @@
 .local/
+supabase/.temp/
+supabase/.branches/
 .env*
 !.env.example
 node_modules/
