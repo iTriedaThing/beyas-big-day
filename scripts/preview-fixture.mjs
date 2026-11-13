@@ -13,7 +13,7 @@ http.createServer(async(req,res)=>{
       const file=path.resolve(root,'.'+decodeURIComponent(pathname==='/'?'/index.html':pathname));
       if(!file.startsWith(root+path.sep))throw new Error('outside root');
       source=await readFile(file);
-      type=path.extname(file)==='.html'?'text/html; charset=utf-8':path.extname(file)==='.css'?'text/css; charset=utf-8':type;
+      type=path.extname(file)==='.html'?'text/html; charset=utf-8':path.extname(file)==='.css'?'text/css; charset=utf-8':path.extname(file)==='.svg'?'image/svg+xml':type;
       if(pathname==='/app.js')source="import {installMock} from './fixture.js';installMock();\n"+source;
     }
     res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-store'});res.end(source);

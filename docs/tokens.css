@@ -1,1 +1,6 @@
-:root{--paper:#f6f4ee;--white:#fffefa;--ink:#263a30;--green:#385b46;--muted:#626a60;--line:#dcded3;--red:#9a382e}
+:root{
+  --paper:#f7f5f2;--white:#fffefc;--ink:#203732;--green:#314641;
+  --sage:#526863;--sage-light:#e9efe9;--purple:#472f5b;--plum:#715c83;
+  --lilac:#8f79a1;--lavender:#eee8f2;--muted:#69636c;--line:#e2dce5;
+  --red:#a43d4d;--shadow:0 8px 28px #472f5b06;
+}
