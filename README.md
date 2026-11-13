@@ -29,8 +29,8 @@ For a **mock-data UI preview**, use `node scripts/preview-fixture.mjs`, open `ht
 
 ## Set up Supabase (administrative, review before applying)
 
-1. Create a separate wedding-planner Supabase project. Do not reuse a project containing unrelated app data. Review [the migration](supabase/migrations/20261113125557_shared_budget.sql) before running it. No hosted schema or account changes were made by this implementation.
-2. Apply the migration once in the project’s SQL editor, or use your installed Supabase CLI’s migration workflow after reviewing its current `--help`. The file was created with CLI **v3.1.0**. Do not run `tests/bootstrap.sql` on Supabase: it is only a disposable plain-Postgres Auth/role stub.
+1. Use a separate wedding-planner Supabase project. This repository is configured for **beyas-big-day** (`nennjenlgfkblsmpkzfr`, US East). The approved [migration](supabase/migrations/20261113132432_shared_budget.sql) was applied there on November 13, 2026. Do not apply it a second time to that project; these steps also describe setup for a fresh project.
+2. For a fresh project, apply the migration once using your installed Supabase CLI’s migration workflow after reviewing its current `--help`, or a migration tool that records history. The file was created with CLI **v3.1.0**; its version now matches the history recorded by Supabase’s migration tool. Do not run `tests/bootstrap.sql` on Supabase: it is only a disposable plain-Postgres Auth/role stub.
 3. In Auth, enable email/password sign-in. Create/confirm two partner users and give each their own password through a secure account setup process. Disable public signup for this private release. The frontend deliberately has no signup, invitation-management, or password-reset flow; recovery/account changes are administrative for now.
 4. Copy [provision.example.sql](supabase/provision.example.sql) into the SQL editor, substitute the two Auth UUIDs, review names/currency/time zone, and run it once. It creates a private wedding, two memberships, and blank starter categories. Record the returned wedding UUID for access checks. Membership changes remain administrative; browser users cannot grant access or create weddings.
 5. Set `supabaseUrl` and `publishableKey` in [docs/config.js](docs/config.js). Only the project URL and `sb_publishable_…` key belong in the public repository. Never use a secret or service-role key. This frontend supports hosted `https://<ref>.supabase.co` projects; custom domains/self-hosted Auth require corresponding URL/CSP changes and verification.
@@ -69,12 +69,15 @@ Routine completed units of work are committed and related commits are pushed tog
 - `node scripts/check.mjs`: syntax, entry assets, and relative asset checks passed. There is no separate lint/typecheck/build toolchain configured.
 - Migration applied successfully to isolated **PostgreSQL 16.4** with test-only Auth stubs. [tests/access.sql](tests/access.sql) passed: two-member reads, outsider isolation across every table, signed-out denial, administrative memberships, same-wedding/expense references, immutable ledger, actor checks, retry deduplication, atomic purchase rollback, version conflicts, preserved quotes, and amendment history.
 - Supabase CLI v3.1.0 security advisors against that local test database: **No issues found**.
+- Hosted `beyas-big-day` after the approved migration: all nine tables have RLS enabled, no anonymous SELECT or authenticated TRUNCATE grants, all nine tables are published to Realtime, and security advisors returned no issues. All ten signed-out Data API checks passed with database permission denials. Account provisioning and real two-account sign-in/sync verification remain outstanding.
 - Browser fixture checks: sign-in form, deposit totals, single-entry paid-in-full purchase, vendor/quote display, no console warnings/errors, and phone-width document geometry. These are **mocked UI checks**, not proof of hosted Auth, email delivery, or Realtime. Complete the hosted checks separately.
 
 To repeat SQL tests on a **new disposable database** with `psql`:
 
 ```sh
-psql -v ON_ERROR_STOP=1 -d YOUR_DISPOSABLE_DATABASE -f tests/bootstrap.sql -f supabase/migrations/20261113125557_shared_budget.sql -f tests/access.sql
+psql -v ON_ERROR_STOP=1 -d YOUR_DISPOSABLE_DATABASE -f tests/bootstrap.sql -f supabase/migrations/20261113132432_shared_budget.sql -f tests/access.sql
 ```
 
 Bootstrap creates test roles if absent and creates the Auth stub schema that a normal Supabase project already has. Access-test fixtures run in a transaction and roll back. Do not run bootstrap against a shared or production database. Use a fresh disposable database for each full migration run.
+
+Run `node scripts/check-public-access.mjs` to verify that the configured hosted project's nine tables and budget-snapshot RPC deny signed-out Data API requests. This uses only the publishable key, writes no records, and does not replace the member/outsider checks in `VERIFICATION.md`.
