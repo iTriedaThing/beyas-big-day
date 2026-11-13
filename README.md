@@ -33,6 +33,8 @@ For a **mock-data UI preview**, use `node scripts/preview-fixture.mjs`, open `ht
 2. For a fresh project, apply the migration once using your installed Supabase CLI’s migration workflow after reviewing its current `--help`, or a migration tool that records history. The file was created with CLI **v3.1.0**; its version now matches the history recorded by Supabase’s migration tool. Do not run `tests/bootstrap.sql` on Supabase: it is only a disposable plain-Postgres Auth/role stub.
 3. In Auth, enable email/password sign-in. Create/confirm two partner users and give each their own password through a secure account setup process. Disable public signup for this private release. The frontend deliberately has no signup, invitation-management, or password-reset flow; recovery/account changes are administrative for now.
 4. Copy [provision.example.sql](supabase/provision.example.sql) into the SQL editor, substitute the two Auth UUIDs, review names/currency/time zone, and run it once. It creates a private wedding, two memberships, and blank starter categories. Record the returned wedding UUID for access checks. Membership changes remain administrative; browser users cannot grant access or create weddings.
+
+   The configured `beyas-big-day` project already has the shared wedding, Ben and Maya’s memberships, and nine starter categories, provisioned on November 13, 2026. Do not run provisioning again there. Each partner must confirm their own email before signing in.
 5. Set `supabaseUrl` and `publishableKey` in [docs/config.js](docs/config.js). Only the project URL and `sb_publishable_…` key belong in the public repository. Never use a secret or service-role key. This frontend supports hosted `https://<ref>.supabase.co` projects; custom domains/self-hosted Auth require corresponding URL/CSP changes and verification.
 6. Verify that `public` is exposed through the Data API. The migration explicitly grants only required table operations to `authenticated`, revokes anonymous and destructive access, and enables RLS on all nine tables. Its helper is in the non-exposed `private` schema; **do not expose that schema**. Ensure Realtime is enabled and that all nine tables are in the `supabase_realtime` publication (the migration adds them when that publication exists).
 7. Run the project’s security advisors in Supabase before entering real data. Follow [the two-account verification guide](VERIFICATION.md).
@@ -41,7 +43,7 @@ Email/password setup follows [Supabase Auth documentation](https://supabase.com/
 
 ## GitHub Pages
 
-The repository remote is [iTriedaThing/beyas-big-day](https://github.com/iTriedaThing/beyas-big-day). The initial implementation is delivered on `feat/shared-budget`; publishing from `main` remains a separate release step.
+The repository remote is [iTriedaThing/beyas-big-day](https://github.com/iTriedaThing/beyas-big-day). The release source is **main → /docs**, and the app URL is [Beya’s big day](https://itriedathing.github.io/beyas-big-day/). Continue normal development on feature branches; promotion to `main` publishes the Pages frontend and requires release authorization.
 
 After reviewing the feature branch and authorizing its promotion to `main` and Pages publishing:
 
@@ -69,7 +71,7 @@ Routine completed units of work are committed and related commits are pushed tog
 - `node scripts/check.mjs`: syntax, entry assets, and relative asset checks passed. There is no separate lint/typecheck/build toolchain configured.
 - Migration applied successfully to isolated **PostgreSQL 16.4** with test-only Auth stubs. [tests/access.sql](tests/access.sql) passed: two-member reads, outsider isolation across every table, signed-out denial, administrative memberships, same-wedding/expense references, immutable ledger, actor checks, retry deduplication, atomic purchase rollback, version conflicts, preserved quotes, and amendment history.
 - Supabase CLI v3.1.0 security advisors against that local test database: **No issues found**.
-- Hosted `beyas-big-day` after the approved migration: all nine tables have RLS enabled, no anonymous SELECT or authenticated TRUNCATE grants, all nine tables are published to Realtime, and security advisors returned no issues. All ten signed-out Data API checks passed with database permission denials. Account provisioning and real two-account sign-in/sync verification remain outstanding.
+- Hosted `beyas-big-day` after the approved migration: all nine tables have RLS enabled, no anonymous SELECT or authenticated TRUNCATE grants, all nine tables are published to Realtime, and security advisors returned no issues. All ten signed-out Data API checks passed with database permission denials. The wedding and two memberships are provisioned; hosted RLS checks under each member’s database role see the same wedding, both members, and all nine categories, while an unrelated simulated user sees no records. Real two-account sign-in/sync verification remains outstanding.
 - Browser fixture checks: sign-in form, deposit totals, single-entry paid-in-full purchase, vendor/quote display, no console warnings/errors, and phone-width document geometry. These are **mocked UI checks**, not proof of hosted Auth, email delivery, or Realtime. Complete the hosted checks separately.
 
 To repeat SQL tests on a **new disposable database** with `psql`:
