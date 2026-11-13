@@ -2,10 +2,13 @@
 
 Beya is Ben + Maya’s couple name. The individual partners are Ben and Maya.
 
-A private wedding budget for two people: GitHub Pages serves `docs/`; a dedicated Supabase project provides Auth, Postgres, RLS, and Realtime. Step 1 of [the build brief](wedding-planner-build-brief.md) is implemented. Guests, menus, tasks, seating, and calendar views remain later releases.
+A private wedding planner for two people: GitHub Pages serves `docs/`; a dedicated Supabase project provides Auth, Postgres, RLS, and Realtime. The shared budget, partner-entered guest list/RSVPs, and date-based checklist from [the build brief](wedding-planner-build-brief.md) are implemented. Menus, visual seating, guest-entered replies, and calendar views remain later releases.
 
 ## What ships
 
+- A forest-green, eggplant, lilac, and sage theme based on the couple’s palette, with original botanical SVG artwork, responsive cards, RSVP/progress charts, and a wedding countdown below the budget summary. No external fonts or new package dependencies.
+- Household contacts and mailing addresses; separate save-the-date and invitation sent dates; individual guests and unnamed companions; partner-entered yes/no/pending replies; relationship tags, gifts, dietary flags, guest requests, and separate caterer confirmation. Counts are per person, mailing progress per household, and dietary counts include attending guests only. Archive/restore replaces destructive deletion. Active guests can be exported to CSV.
+- An editable shared checklist with 22 optional starter tasks, planning windows, completion progress, assignees, relative deadlines, fixed dates, and upcoming/overdue summaries. Starter imports deduplicate by wedding and template key. Calendar-month offsets clamp to the last valid day; final-month/week/day windows use explicit day offsets. Setting/changing the wedding date updates relative dates and the countdown, while fixed deadlines stay fixed.
 - Email/password sign-in for administrator-provisioned accounts, email-link confirmation and password recovery, shared wedding settings, editable categories and item targets, planned expenses, and booked agreements.
 - Vendor contacts and side-by-side package quotes, including fixed/per-guest prices, saved headcount, inclusions, ratings, and notes. A preferred quote contributes once to forecast. Booking updates the existing expense; unused quotes stay available. Booked quotes are preserved; agreed-price changes require an amendment with history.
 - Deposits, payments, refunds, dated installments, partial balances, overdue flags, vendor credits, separate payer/recorder attribution, category overages, and exact dollar tables.
@@ -39,6 +42,12 @@ For a **mock-data UI preview**, use `node scripts/preview-fixture.mjs`, open `ht
 6. Verify that `public` is exposed through the Data API. The migration explicitly grants only required table operations to `authenticated`, revokes anonymous and destructive access, and enables RLS on all nine tables. Its helper is in the non-exposed `private` schema; **do not expose that schema**. Ensure Realtime is enabled and that all nine tables are in the `supabase_realtime` publication (the migration adds them when that publication exists).
 7. Run the project’s security advisors in Supabase before entering real data. Follow [the two-account verification guide](VERIFICATION.md).
 
+### Guest list and checklist migration
+
+The additive [guest/checklist migration](supabase/migrations/20261113203508_guests_and_checklist.sql) creates `invitations`, `guests`, and `tasks`, adds an optional planning headcount, and extends the existing snapshot/Realtime subscription data. It enables membership RLS, explicit grants, composite same-wedding references, and optimistic edit versions on every new table. `create_household` saves a household and all its initial guest seats in one transaction using stable client IDs for retries. No real guests, sample prices, or starter tasks are inserted automatically.
+
+This migration was approved and applied to `beyas-big-day` on November 13, 2026; its filename matches the recorded hosted migration version. Do not apply it again there. For a fresh project, apply it after the base schema with explicit target approval. Then merge the frontend PR. If frontend publication happens first, the new pages show a preparation state while the existing budget continues to work. Planning headcount supplies the default for **new** per-person quotes; it never changes an existing quote or agreement automatically.
+
 Email/password setup follows [Supabase Auth documentation](https://supabase.com/docs/guides/auth/passwords); access controls follow [Supabase RLS guidance](https://supabase.com/docs/guides/database/postgres/row-level-security). The dependency-free client uses the documented [Realtime JSON protocol](https://supabase.com/docs/guides/realtime/protocol), with polling if subscription delivery fails.
 
 ## GitHub Pages
@@ -67,13 +76,16 @@ Routine completed units of work are committed and related commits are pushed tog
 
 ## Verification performed
 
-- `node --test tests/*.test.mjs`: 26 tests passed, covering budget calculations, retry persistence, conflicts, refresh/sign-out behavior, native browser fetch binding, and email-link/password-recovery handling. Recovery checks cover URL cleanup, server validation, expired/invalid links, session persistence, authenticated password updates, failures, sign-out races, and reset-email request payloads.
+- `node --test tests/*.test.mjs`: 36 tests passed, covering the budget/auth/recovery invariants plus per-person RSVPs, dietary deduplication, archived records, date/countdown boundaries, month clamping, fixed deadlines, task progress, household validation, rendering escaping, and migration-pending views.
 - `node scripts/check.mjs`: syntax, entry assets, and relative asset checks passed. There is no separate lint/typecheck/build toolchain configured.
 - Migration applied successfully to isolated **PostgreSQL 16.4** with test-only Auth stubs. [tests/access.sql](tests/access.sql) passed: two-member reads, outsider isolation across every table, signed-out denial, administrative memberships, same-wedding/expense references, immutable ledger, actor checks, retry deduplication, atomic purchase rollback, version conflicts, preserved quotes, and amendment history.
 - Supabase CLI v3.1.0 security advisors against that local test database: **No issues found**.
 - Hosted `beyas-big-day` after the approved migration: all nine tables have RLS enabled, no anonymous SELECT or authenticated TRUNCATE grants, all nine tables are published to Realtime, and security advisors returned no issues. All ten signed-out Data API checks passed with database permission denials. The wedding and two memberships are provisioned; hosted RLS checks under each member’s database role see the same wedding, both members, and all nine categories, while an unrelated simulated user sees no records. Real two-account sign-in/sync verification remains outstanding.
 - Browser fixture checks: sign-in form, deposit totals, single-entry paid-in-full purchase, vendor/quote display, no console warnings/errors, and phone-width document geometry. These are **mocked UI checks**, not proof of hosted Auth, email delivery, or Realtime. Complete the hosted checks separately.
 - Recovery browser fixtures: email-link tokens disappear from the URL, recovery survives reload, mismatched passwords are rejected, a synthetic password update returns to sign-in, and reset requests show a generic success message. These checks use no real account credentials and send no email.
+- Guest/checklist migration and [planner access suite](tests/planner-access.sql) passed in isolated Postgres: atomic household rollback/retries, individual seat counts, same-wedding links, restricted assignees, seed deduplication, version conflicts, member reads and outsider/signed-out denials. Local security advisors returned no issues.
+- After the approved hosted planner migration, all three added tables have RLS enabled, anonymous reads and authenticated truncation are denied, all twelve tables are published to Realtime, and all 13 signed-out API checks passed. The new tables remain empty until the couple enters data or imports the starter checklist. Hosted advisors reported an Auth warning for disabled leaked-password protection; review [the password-security setting](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) separately. No schema-policy warnings were reported.
+- Desktop/390-pixel browser fixtures verified household creation, RSVP changes, search, multiple dietary flags, task completion and progress, repeated starter imports, and responsive layout with no horizontal page overflow or console errors. The fixture uses sample people and dates; none are copied into the live wedding.
 
 To repeat SQL tests on a **new disposable database** with `psql`:
 
@@ -81,6 +93,14 @@ To repeat SQL tests on a **new disposable database** with `psql`:
 psql -v ON_ERROR_STOP=1 -d YOUR_DISPOSABLE_DATABASE -f tests/bootstrap.sql -f supabase/migrations/20261113132432_shared_budget.sql -f tests/access.sql
 ```
 
+Then apply/test the additive planner migration in the same disposable database:
+
+```sh
+psql -v ON_ERROR_STOP=1 -d YOUR_DISPOSABLE_DATABASE -f supabase/migrations/20261113203508_guests_and_checklist.sql -f tests/planner-access.sql
+```
+
 Bootstrap creates test roles if absent and creates the Auth stub schema that a normal Supabase project already has. Access-test fixtures run in a transaction and roll back. Do not run bootstrap against a shared or production database. Use a fresh disposable database for each full migration run.
 
 Run `node scripts/check-public-access.mjs` to verify that the configured hosted project's nine tables and budget-snapshot RPC deny signed-out Data API requests. This uses only the publishable key, writes no records, and does not replace the member/outsider checks in `VERIFICATION.md`.
+
+After the planner migration is applied, add `--planner` to check all twelve tables and the snapshot RPC (13 signed-out access checks).

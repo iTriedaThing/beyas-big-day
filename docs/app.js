@@ -1,18 +1,18 @@
 import { config } from './config.js';
 import { Api, subscribe, takeAuthRedirect } from './api.js';
 import { cents, money, quoteTotal, summarize, installmentBalance, csv, localDate } from './budget.js';
+import {escapeHTML as esc,button as btn,input,textarea as area,select} from './ui.js';
+import {TASK_WINDOWS,DIETARY_FLAGS,GUEST_TAGS,STARTER_TASKS,householdGuests,guestSummary} from './planner.js';
+import {renderGuests,renderPlanning,plannerOverview,displayDate} from './planner-views.js';
 
 const $ = s => document.querySelector(s);
 const initialAuthRedirect = takeAuthRedirect(window.location, window.history);
-const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const btn = (action, label, id = '', cls = 'secondary') => `<button class="${cls}" data-action="${action}" data-id="${esc(id)}">${label}</button>`;
-const input = (name, label, value = '', type = 'text', extra = '') => `<label for="f-${name}">${label}</label><input id="f-${name}" name="${name}" type="${type}" value="${esc(value)}" ${extra}>`;
-const area = (name, label, value = '') => `<label for="f-${name}">${label}</label><textarea id="f-${name}" name="${name}" maxlength="4000">${esc(value)}</textarea>`;
-const select = (name, label, options, value = '') => `<label for="f-${name}">${label}</label><select id="f-${name}" name="${name}">${options.map(([id, text]) => `<option value="${esc(id)}" ${id === value ? 'selected' : ''}>${esc(text)}</option>`).join('')}</select>`;
 const amount = (name, label, value = null, required = false) => input(name, label, value === null ? '' : (value / 100).toFixed(2), 'text', `inputmode="decimal" ${required ? 'required' : ''} maxlength="14"`);
 const dialog = $('#editor');
 let api, data, totals, weddingId, tab = 'budget', selectedExpense = '', selectedCategory = '', stopLive, loading = false, loadAgain = false, syncStatus = 'Connecting…', noticeTimer;
 let sessionEpoch = 0, handlingAuthRedirect = false;
+const guestFilters = {search:'',rsvp:'',tag:'',view:'active'};
+let taskFilter = 'all';
 const fmt = value => money(value, data.wedding.currency);
 const vendorName = id => data.vendors.find(v => v.id === id)?.name || 'No vendor linked';
 const memberName = id => data.members.find(m => m.user_id === id)?.display_name || id;
@@ -115,7 +115,7 @@ function renderAccount() {
 function connectLive() {
   stopLive?.();
   if (!weddingId || !api.session) return;
-  stopLive = subscribe(api, weddingId, () => reload(), status => { syncStatus = status; if ($('#sync')) $('#sync').textContent = status; });
+  stopLive = subscribe(api, weddingId, () => reload(), status => { syncStatus = status; if ($('#sync')) $('#sync').textContent = status; },!!data?.planner_ready);
 }
 async function reload() {
   if (loading) { loadAgain = true; return; }
@@ -125,7 +125,10 @@ async function reload() {
     const snapshot = await api.snapshot(weddingId);
     if (epoch !== sessionEpoch) return;
     if (!snapshot.wedding) { resetPrivateUI(); $('#main').innerHTML = '<h1>Wedding access removed</h1><p>Contact your administrator.</p>'; renderAccount(); return; }
-    data = snapshot; totals = summarize(data); render();
+    const previousReady = data?.planner_ready;
+    data = {...snapshot,invitations:snapshot.invitations||[],guests:snapshot.guests||[],tasks:snapshot.tasks||[]};
+    totals = summarize(data); render();
+    if (stopLive && previousReady !== data.planner_ready) connectLive();
   } catch (error) {
     if (epoch !== sessionEpoch) return;
     if (!api.session) { resetPrivateUI(); renderLogin('Session expired. Sign in again.'); }
@@ -135,10 +138,11 @@ async function reload() {
 }
 function render() {
   renderAccount();
-  $('#main').innerHTML = `<section class="intro"><div><p class="eyebrow">YOUR SHARED WEDDING BUDGET</p><h1>${esc(data.wedding.name)}</h1><p class="muted">${data.wedding.wedding_date ? `Wedding date: ${esc(data.wedding.wedding_date)} · ` : 'Date still to come · '}${esc(data.wedding.currency)} · ${esc(data.wedding.time_zone)}</p></div><div class="actions">${btn('expense-new', '+ Add expense', '', '')}${btn('payment-new', 'Record payment', '', '')}</div></section>
-    <div class="section-head"><small id="sync">${esc(syncStatus)}</small><div class="actions">${api.pending ? btn('retry', 'Retry pending save') : ''}${btn('refresh', 'Refresh')}${btn('settings', 'Wedding settings')}${btn('export', 'Export CSVs')}</div></div>
-    <nav aria-label="Planner sections"><button data-action="tab-budget" class="secondary" aria-pressed="${tab === 'budget'}">Budget</button><button data-action="tab-vendors" class="secondary" aria-pressed="${tab === 'vendors'}">Vendors & quotes</button></nav>
-    ${tab === 'budget' ? renderBudget() : renderVendors()}`;
+  const primary=tab==='guests'?btn('household-new','+ Add household','',''):tab==='planning'?btn('task-new','+ Add task','',''):btn('expense-new','+ Add expense','','')+btn('payment-new','Record payment');
+  $('#main').innerHTML = `<section class="intro"><div><p class="eyebrow">BEN + MAYA · A DAY THAT’S OURS</p><h1>${esc(data.wedding.name)}</h1><p class="intro-note">A little planning. A lot of love.</p><p class="wedding-meta">${data.wedding.wedding_date?esc(displayDate(data.wedding.wedding_date)):'Our date is still a beautiful possibility'}<span>·</span>${esc(data.wedding.currency)}</p></div><div class="actions">${primary}</div></section>
+    <div class="section-head utility-bar"><small id="sync" class="sync-status">${esc(syncStatus)}</small><div class="actions">${api.pending?btn('retry','Retry pending save'):''}${btn('refresh','Refresh')}${btn('settings','Wedding settings')}${btn('export','Budget CSVs')}</div></div>
+    <nav class="planner-nav" aria-label="Planner sections">${[['budget','Budget','01'],['vendors','Vendors & quotes','02'],['guests','Guest list','03'],['planning','Our checklist','04']].map(([id,label,number])=>`<button type="button" data-action="tab-${id}" class="secondary" aria-pressed="${tab===id}"><span aria-hidden="true">${number}</span>${label}</button>`).join('')}</nav>
+    ${tab==='budget'?renderBudget():tab==='vendors'?renderVendors():tab==='guests'?renderGuests(data,guestFilters):renderPlanning(data,taskFilter,today())}`;
 }
 function renderBudget() {
   const room = data.wedding.cap_cents - totals.forecast;
@@ -147,7 +151,8 @@ function renderBudget() {
     <article class="card"><a href="#payments">Paid, net of refunds</a><span class="amount">${fmt(totals.paid)}</span></article><article class="card"><a href="#expenses">Still owed</a><span class="amount">${fmt(totals.owed)}</span><small>Booked expenses only · ${fmt(totals.credit)} vendor credit</small></article><article class="card"><a href="#expenses">${room < 0 ? 'Over wedding cap' : 'Budget room'}</a><span class="amount ${room < 0 ? 'warning' : ''}">${fmt(Math.abs(room))}</span><small>Cap ${fmt(data.wedding.cap_cents)}${totals.unknown ? ' · provisional' : ''}</small></article></div>
     <section class="panel"><div class="section-head"><h2>Next payment</h2><a href="#installments">All installments</a></div>${next ? `<p><strong>${fmt(next.remaining)}</strong> · ${esc(next.label)} · ${esc(expenseName(next.expense_id))}</p><p>${esc(vendorName(data.expenses.find(e => e.id === next.expense_id)?.vendor_id))} · Due ${esc(next.due_date)} ${next.due_date < today() ? '<span class="warning">Overdue</span>' : ''}</p>${btn('payment-installment', 'Record payment', next.id)}` : '<p class="muted">No outstanding installments. Add a due date to a booked expense below.</p>'}
     <p class="muted">${fmt(totals.allocated)} allocated to item targets · ${fmt(data.wedding.cap_cents - totals.allocated)} left to allocate</p></section>
-    <div class="twocol"><section class="panel"><div class="section-head"><h2>Budget vs. paid</h2><select aria-label="Chart comparison" id="comparison"><option value="paid">Paid</option><option value="forecast">Forecast</option></select></div><div class="legend"><span>Sand: item targets</span><span>Green: paid / forecast</span></div><div id="bars">${bars('paid')}</div></section><section class="panel"><h2>Spending breakdown</h2>${breakdown()}</section></div>
+    ${plannerOverview(data,today())}
+    <div class="twocol"><section class="panel"><div class="section-head"><h2>Budget vs. paid</h2><select aria-label="Chart comparison" id="comparison"><option value="paid">Paid</option><option value="forecast">Forecast</option></select></div><div class="legend"><span>Lilac: item targets</span><span>Green: paid / forecast</span></div><div id="bars">${bars('paid')}</div></section><section class="panel"><h2>Spending breakdown</h2>${breakdown()}</section></div>
     <section class="panel"><div class="section-head"><h2>Category amounts & overages</h2>${btn('category-new', 'Add category')}</div><p class="muted">Targets come from the expenses in each category. Select a category to see its items.</p><div class="table-wrap"><table><thead><tr><th>Category</th><th>Target</th><th>Forecast</th><th>Paid</th><th>Forecast vs. target</th><th></th></tr></thead><tbody>${totals.categories.map(c => `<tr><td>${btn('filter-category', esc(c.name), c.id)}</td><td>${fmt(c.target)}</td><td>${fmt(c.forecast)}${c.unknown ? ' + unknown' : ''}</td><td>${fmt(c.paid)}</td><td class="${c.forecast > c.target ? 'warning' : 'good'}">${variance(c.forecast - c.target)}</td><td>${btn('category-edit', 'Rename', c.id)}</td></tr>`).join('')}</tbody></table></div></section>
     <section class="panel" id="expenses"><div class="section-head"><h2>Expenses</h2>${select('category-filter', 'Filter category', [['', 'All categories'], ...opts(data.categories)], selectedCategory)}</div>${expenseTable(totals.rows.filter(e => !selectedCategory || e.category_id === selectedCategory))}</section>
     ${selectedExpense ? renderExpense(selectedExpense) : ''}
@@ -156,11 +161,11 @@ function renderBudget() {
 function variance(value) { return `${fmt(Math.abs(value))} ${value > 0 ? 'over' : value < 0 ? 'under' : 'on target'}`; }
 function bars(key) {
   const max = Math.max(1, ...totals.categories.flatMap(c => [c.target, Math.abs(c[key])]));
-  return totals.categories.map(c => `<div class="bar-row"><a href="#expenses" data-action="filter-category" data-id="${c.id}">${esc(c.name)}</a><small> · ${fmt(c.target)} target / ${fmt(c[key])} ${key}</small><svg role="img" aria-label="${esc(c.name)}: ${esc(fmt(c.target))} target; ${esc(fmt(c[key]))} ${key}" viewBox="0 0 100 9" width="100%" height="25" preserveAspectRatio="none"><rect width="100" height="9" fill="#eeeae1"/><rect width="${c.target / max * 100}" height="4" fill="#cab99e"/><rect y="5" width="${Math.abs(c[key]) / max * 100}" height="4" fill="${c[key] < 0 ? '#9a382e' : '#385b46'}"/></svg></div>`).join('') || '<p class="empty">Add a category and an expense to begin.</p>';
+  return totals.categories.map(c => `<div class="bar-row"><a href="#expenses" data-action="filter-category" data-id="${c.id}">${esc(c.name)}</a><small> · ${fmt(c.target)} target / ${fmt(c[key])} ${key}</small><svg role="img" aria-label="${esc(c.name)}: ${esc(fmt(c.target))} target; ${esc(fmt(c[key]))} ${key}" viewBox="0 0 100 9" width="100%" height="25" preserveAspectRatio="none"><rect width="100" height="9" fill="#eee9ef"/><rect width="${c.target/max*100}" height="4" fill="#b6a5c3"/><rect y="5" width="${Math.abs(c[key])/max*100}" height="4" fill="${c[key]<0?'#a4424c':'#314641'}"/></svg></div>`).join('') || '<p class="empty">Add a category and an expense to begin.</p>';
 }
 function breakdown() {
   if (totals.paid <= 0 || totals.categories.some(c => c.paid < 0)) return '<p class="muted">A percentage chart needs positive net spending with no category credits. Exact amounts are in the category table below.</p>';
-  const colors = ['#385b46', '#8c9b74', '#c0a582', '#b97d5e', '#587779', '#98869a', '#78664f', '#a4af9f'];
+  const colors = ['#314641','#715c83','#8f79a1','#526863','#a9b9aa','#472f5b','#b9a3c6','#203732'];
   let offset = 0;
   const circles = totals.categories.map((c, i) => {
     const share = c.paid / totals.paid * 100;
@@ -237,10 +242,90 @@ function insert(table, record) {
 }
 function settingsForm() {
   const w = data.wedding;
-  openForm('Wedding settings', input('name','Wedding name',w.name,'text','required maxlength="120"') + select('currency','Currency (two decimal places)', ['USD','CAD','GBP','EUR','AUD','NZD'].map(c => [c,c]),w.currency) + amount('cap','Wedding cap',w.cap_cents,true) + input('wedding_date','Wedding date (optional)',w.wedding_date || '','date') + input('time_zone','IANA time zone',w.time_zone,'text','required') + '<p class="muted">Currency is fixed after your first expense. Changing it does not convert money. Dates are calendar dates in this wedding’s time zone.</p>', f => update('weddings',w,{name:f.name.trim(),currency:f.currency,cap_cents:cents(f.cap),wedding_date:f.wedding_date || null,time_zone:f.time_zone.trim()}));
+  openForm('Wedding settings', input('name','Wedding name',w.name,'text','required maxlength="120"') + select('currency','Currency (two decimal places)', ['USD','CAD','GBP','EUR','AUD','NZD'].map(c => [c,c]),w.currency) + amount('cap','Wedding cap',w.cap_cents,true) + input('wedding_date','Wedding date (optional)',w.wedding_date || '','date') + (data.planner_ready?input('planning_headcount','Planning guest count (optional)',w.planning_headcount??'','number','min="0" max="100000" step="1"'):'') + input('time_zone','IANA time zone',w.time_zone,'text','required') + '<p class="muted">Currency is fixed after your first expense. Dates follow your wedding’s time zone. Planning headcount is a starting point for new per-guest quotes; existing offers keep their saved count.</p>', f => update('weddings',w,{name:f.name.trim(),currency:f.currency,cap_cents:cents(f.cap),wedding_date:f.wedding_date || null,time_zone:f.time_zone.trim(),...(data.planner_ready?{planning_headcount:f.planning_headcount===''?null:Number(f.planning_headcount)}:{})}));
   if (data.expenses.length) $('#f-currency').disabled = true;
   // Disabled controls are omitted from FormData; retain the original currency.
   if (data.expenses.length) { const hidden = document.createElement('input'); hidden.type='hidden'; hidden.name='currency'; hidden.value=w.currency; $('#fields').append(hidden); }
+}
+const checkbox = (name,label,checked=false) => `<label class="check-label"><input type="checkbox" name="${name}" value="on" ${checked?'checked':''}> <span>${esc(label)}</span></label>`;
+function requirePlanner() {
+  if(data.planner_ready)return true;
+  notify('The shared planning features are being prepared. Your budget is ready to use.');return false;
+}
+function householdForm(id) {
+  if(!requirePlanner())return;
+  const household=data.invitations.find(i=>i.id===id), householdId=household?.id||crypto.randomUUID();
+  const fields=input('household_name','Household name',household?.household_name||'','text','required maxlength="160" placeholder="The Rivera family"')
+    +(!household?area('guest_names','Guest names · one per line')+input('unnamed_count','Unnamed companions',0,'number','required min="0" max="20" step="1"')+'<p class="muted">Each name and each unnamed companion is one invited seat.</p>':'')
+    +input('contact_email','Household email',household?.contact_email||'','email','maxlength="254"')
+    +input('phone','Phone',household?.phone||'','tel','maxlength="100"')
+    +area('mailing_address','Mailing address',household?.mailing_address||'')
+    +input('save_the_date_sent_on','Save-the-date sent on',household?.save_the_date_sent_on||'','date')
+    +input('invitation_sent_on','Formal invitation sent on',household?.invitation_sent_on||'','date')
+    +area('notes','Household notes',household?.notes||'');
+  openForm(household?'Edit household':'Invite your people',fields,async f=>{
+    const record={household_name:f.household_name.trim(),contact_email:f.contact_email.trim(),phone:f.phone.trim(),mailing_address:f.mailing_address,
+      save_the_date_sent_on:f.save_the_date_sent_on||null,invitation_sent_on:f.invitation_sent_on||null,notes:f.notes};
+    if(household)return update('invitations',household,record);
+    const guests=householdGuests(f.guest_names,Number(f.unnamed_count)).map(g=>({...g,id:crypto.randomUUID()}));
+    return operation('rpc/create_household',{i:{...record,id:householdId,wedding_id:weddingId},g:guests});
+  });
+  $('#f-mailing_address').maxLength=1000;
+}
+function guestForm(id,invitationId) {
+  if(!requirePlanner())return;
+  const guest=data.guests.find(g=>g.id===id), households=data.invitations.filter(i=>!i.archived||i.id===guest?.invitation_id);
+  if(!households.length){householdForm();return;}
+  openForm(guest?'Edit guest':'Add a guest',select('invitation_id','Household',households.map(i=>[i.id,i.household_name]),guest?.invitation_id||invitationId||households[0].id)
+    +input('name','Guest name (blank for an unnamed companion)',guest?.name||'','text','maxlength="120"')
+    +checkbox('is_companion','This guest is a companion',guest?.is_companion)
+    +select('rsvp','Reply',[['pending','Awaiting reply'],['yes','Joyfully attending'],['no','Unable to attend']],guest?.rsvp||'pending')
+    +select('tag','Relationship',[['','No tag'],...GUEST_TAGS.map(t=>[t,t])],guest?.tag||'')
+    +checkbox('gift_received','Gift received',guest?.gift_received)
+    +'<fieldset class="dietary-options"><legend>Dietary needs · choose all that apply</legend>'
+    +DIETARY_FLAGS.map(([key,label])=>checkbox(`diet_${key}`,label,guest?.dietary_flags?.includes(key))).join('')+'</fieldset>'
+    +area('dietary_notes','Guest’s allergy or dietary request',guest?.dietary_notes||'')
+    +area('caterer_confirmation','Caterer’s response / confirmation',guest?.caterer_confirmation||''),f=>{
+      const name=f.name.trim()||null,is_companion=f.is_companion==='on';
+      if(!name&&!is_companion)throw new Error('Enter a name or mark this guest as an unnamed companion.');
+      const record={invitation_id:f.invitation_id,name,is_companion,rsvp:f.rsvp,tag:f.tag,gift_received:f.gift_received==='on',
+        dietary_flags:DIETARY_FLAGS.filter(([key])=>f[`diet_${key}`]==='on').map(([key])=>key),dietary_notes:f.dietary_notes,caterer_confirmation:f.caterer_confirmation};
+      return guest?update('guests',guest,record):insert('guests',record);
+    });
+  $('#f-dietary_notes').maxLength=2000;$('#f-caterer_confirmation').maxLength=2000;
+}
+function taskForm(id) {
+  if(!requirePlanner())return;
+  const task=data.tasks.find(t=>t.id===id);
+  openForm(task?'Edit our plan':'A little next step',input('title','What needs to happen?',task?.title||'','text','required maxlength="160"')
+    +select('planning_window','Planning window',TASK_WINDOWS.map(w=>[w.id,w.label]),task?.planning_window||'12_plus')
+    +input('due_date','Fixed due date (optional)',task?.due_date||'','date')
+    +'<p class="muted">Leave the fixed date blank to follow your wedding date and planning window.</p>'
+    +select('assignee_id','Who’s taking this one?',[['','Together / unassigned'],...data.members.map(m=>[m.user_id,m.display_name])],task?.assignee_id||'')
+    +checkbox('completed','Already complete',task?.completed)+area('notes','Notes',task?.notes||''),f=>{
+      const record={title:f.title.trim(),planning_window:f.planning_window,due_date:f.due_date||null,assignee_id:f.assignee_id||null,completed:f.completed==='on',notes:f.notes};
+      return task?update('tasks',task,record):insert('tasks',record);
+    });
+}
+async function seedTasks() {
+  if(!requirePlanner())return;
+  const records=STARTER_TASKS.map(([starter_key,planning_window,title])=>({id:crypto.randomUUID(),wedding_id:weddingId,starter_key,planning_window,title}));
+  await operation('tasks?on_conflict=wedding_id,starter_key',records,'POST','return=representation,resolution=ignore-duplicates');
+  notify('Your editable starter checklist is ready. Existing starter tasks were preserved.');await reload();
+}
+async function changePlannerRecord(table,id,fields) {
+  const record=data[table].find(r=>r.id===id);if(!record)throw new Error('This record changed. Refresh and try again.');
+  await update(table,record,fields);await reload();
+}
+function exportGuests() {
+  const rows=guestSummary(data.invitations,data.guests).active.map(g=>{
+    const i=data.invitations.find(i=>i.id===g.invitation_id);
+    return [g.id,i.household_name,g.name||'Unnamed companion',g.is_companion,g.rsvp,g.tag,g.gift_received,
+      i.contact_email,i.phone,i.mailing_address,i.save_the_date_sent_on,i.invitation_sent_on,(g.dietary_flags||[]).join('; '),g.dietary_notes,g.caterer_confirmation];
+  });
+  const url=URL.createObjectURL(new Blob([csv([['guest_id','household','guest_name','companion','rsvp','relationship','gift_received','email','phone','address','save_the_date_sent','invitation_sent','dietary_flags','guest_request','caterer_confirmation'],...rows])],{type:'text/csv;charset=utf-8'}));
+  const link=document.createElement('a');link.href=url;link.download='wedding-guests.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  notify('Exported active guests. Keep this file private.');
 }
 function categoryForm(id) {
   const c = data.categories.find(c => c.id === id);
@@ -286,7 +371,7 @@ function expenseForm(id) {
 function quoteForm(id, expenseId) {
   if (!data.vendors.length) { notify('Add a vendor contact first, then add its quote.'); vendorForm(); return; }
   const q = data.quotes.find(q => q.id === id);
-  openForm(q ? 'Edit quote' : 'Add a package quote',input('package_name','Package name',q?.package_name || '','text','required maxlength="160"') + select('vendor_id','Vendor',opts(data.vendors),q?.vendor_id || data.vendors[0].id) + select('pricing_basis','Pricing basis',[['fixed','Fixed package'],['per_person','Per guest']],q?.pricing_basis || 'fixed') + amount('unit','Package price / price per guest',q?.unit_cents ?? null,true) + input('headcount','Planning headcount for per-guest offers',q?.headcount || 1,'number','min="1" max="100000" required') + area('details','What’s included',q?.details) + select('rating','Your rating',[['','Not rated'],...['1','2','3','4','5'].map(r => [r,`${r}/5`])],String(q?.rating || '')) + area('notes','Notes',q?.notes), f => {
+  openForm(q ? 'Edit quote' : 'Add a package quote',input('package_name','Package name',q?.package_name || '','text','required maxlength="160"') + select('vendor_id','Vendor',opts(data.vendors),q?.vendor_id || data.vendors[0].id) + select('pricing_basis','Pricing basis',[['fixed','Fixed package'],['per_person','Per guest']],q?.pricing_basis || 'fixed') + amount('unit','Package price / price per guest',q?.unit_cents ?? null,true) + input('headcount','Planning headcount for per-guest offers',q?.headcount || data.wedding.planning_headcount || 1,'number','min="1" max="100000" required') + area('details','What’s included',q?.details) + select('rating','Your rating',[['','Not rated'],...['1','2','3','4','5'].map(r => [r,`${r}/5`])],String(q?.rating || '')) + area('notes','Notes',q?.notes), f => {
     const fields = {package_name:f.package_name.trim(),pricing_basis:f.pricing_basis,unit_cents:cents(f.unit),headcount:Number(f.headcount),details:f.details,rating:f.rating ? Number(f.rating) : null,notes:f.notes};
     return q ? update('quotes',q,fields) : insert('quotes',{...fields,vendor_id:f.vendor_id,expense_id:expenseId});
   });
@@ -331,6 +416,16 @@ function exportCSVs() {
   notify('Exported expense and payment CSVs. Allow multiple downloads if your browser asks. Amounts are integer cents.');
 }
 const actions = {
+  'tab-guests':()=>{tab='guests';render();},'tab-planning':()=>{tab='planning';render();},
+  'household-new':()=>householdForm(),'household-edit':householdForm,
+  'household-archive':id=>changePlannerRecord('invitations',id,{archived:!data.invitations.find(i=>i.id===id).archived}),
+  'guest-new':invitationId=>guestForm('',invitationId),'guest-edit':id=>guestForm(id),
+  'guest-rsvp':(id,rsvp)=>changePlannerRecord('guests',id,{rsvp}),
+  'guest-archive':id=>changePlannerRecord('guests',id,{archived:!data.guests.find(g=>g.id===id).archived}),
+  'guests-export':exportGuests,'task-new':()=>taskForm(),'task-edit':taskForm,'tasks-seed':seedTasks,
+  'task-toggle':id=>changePlannerRecord('tasks',id,{completed:!data.tasks.find(t=>t.id===id).completed}),
+  'task-archive':id=>changePlannerRecord('tasks',id,{archived:!data.tasks.find(t=>t.id===id).archived}),
+  'task-filter':id=>{taskFilter=id;render();},
   'reset-request': renderResetRequest, 'back-to-login': () => renderLogin(),
   'cancel-recovery': async () => {try{await api.signOut();}finally{resetPrivateUI();renderLogin();}},
   start, refresh: reload, settings: settingsForm, export: exportCSVs,
@@ -353,11 +448,18 @@ const actions = {
 document.addEventListener('click', async event => {
   const target = event.target.closest('[data-action]'); if (!target) return;
   event.preventDefault(); target.disabled=true;
-  try {await actions[target.dataset.action]?.(target.dataset.id);} catch(error){notify(errorMessage(error),true); if(data)render();} finally{target.disabled=false;}
+  try {await actions[target.dataset.action]?.(target.dataset.id,target.dataset.value);} catch(error){notify(errorMessage(error),true); if(data)render();} finally{target.disabled=false;}
 });
 document.addEventListener('change',event => {
   if(event.target.id==='comparison') $('#bars').innerHTML=bars(event.target.value);
   if(event.target.id==='f-category-filter'){selectedCategory=event.target.value;render();}
+  const guestSelects={'f-guest-rsvp':'rsvp','f-guest-tag':'tag','f-guest-view':'view'};
+  if(guestSelects[event.target.id]){guestFilters[guestSelects[event.target.id]]=event.target.value;render();}
+});
+document.addEventListener('input',event=>{
+  if(event.target.id!=='f-guest-search')return;
+  guestFilters.search=event.target.value;const cursor=event.target.selectionStart;render();
+  $('#f-guest-search').focus();$('#f-guest-search').setSelectionRange(cursor,cursor);
 });
 $('#cancel').onclick = () => dialog.close();
 dialog.addEventListener('cancel',event => {if($('#save').disabled)event.preventDefault();});

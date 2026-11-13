@@ -73,6 +73,19 @@ await (async () => {
 
 Every row must pass: signed-out access is denied; unrelated signed-in access returns no accessible records. If any row is visible, stop before entering private data and review membership/RLS. The local SQL suite additionally tests unauthorized mutations and cross-wedding references without requiring writes to your hosted project.
 
+## Guest list, checklist, and tonight’s demo
+
+Apply the approved guest/checklist migration before merging its frontend PR. Keep any real contact information out of Git and demo exports.
+
+1. On A, add a household with two named guests and one unnamed companion. On B, verify one household and three invited seats. Mark two attending and leave one pending: the RSVP chart must show two yes, zero no, one pending. Give the people different replies to verify the household is not treated as one person.
+2. Set one save-the-date sent date and one formal invitation sent date on that household. Each mailing count should increase once, independently. Add two dietary flags to one attending guest: the overall dietary guest count increases by one, and each relevant flag count increases by one. Record the caterer’s reply in its separate field.
+3. Search by guest/household, filter replies and relationships, and export the active guest CSV. Archive a guest or household and verify totals decrease; restore from the Archived/All view and verify totals return.
+4. Open **Our checklist** and add the starter checklist. Import it again on the other phone: tasks must not duplicate. Mark a task complete on A and verify B’s group totals and overall progress update. Add a custom task and an assignee.
+5. Set the wedding date in settings. Check the countdown and relative task dates; give a task a fixed date, then change the wedding date and confirm that only relative dates move. Dates/countdown use the wedding time zone and calendar days, with no daylight-saving hour drift.
+6. Edit the same guest or task on both phones before either saves. The second stale save should request review instead of overwriting. Sign in as an unrelated user and check that the new records remain inaccessible. Run `node scripts/check-public-access.mjs --planner` for signed-out API checks after migration.
+
+A short demo sequence: show Budget and the countdown, add a three-person household, tap an RSVP, switch to the checklist, and complete one task while the other phone is open. The mock-data preview is for rehearsal only; live data starts blank until you enter it or choose the starter checklist.
+
 ## Export and final sign-off
 
 Export both CSVs from either account. Your browser may request permission for the second download. Reconcile expenses by UUID and payments by expense/installment UUID; amounts are integer cents. Check deposits, refunds, credits, payer/recorder, and that paid-in-full appears exactly once. Keep exports private and outside Git.
