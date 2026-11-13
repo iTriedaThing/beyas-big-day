@@ -1,5 +1,5 @@
 export class Api {
-  constructor(config, storage = sessionStorage, fetcher = fetch) {
+  constructor(config, storage = sessionStorage, fetcher = globalThis.fetch.bind(globalThis)) {
     this.url = config.supabaseUrl.replace(/\/$/, '');
     this.key = config.publishableKey;
     this.storage = storage;
