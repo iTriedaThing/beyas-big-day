@@ -1,5 +1,7 @@
 # Browser acceptance — November 14, 2026
 
+Subsequent rollout: PR #4 was merged by the user, and the separately approved feedback migration was applied to `beyas-big-day` as version `20261114163318`. Member/outsider reads, schema/policy/bucket configuration, unchanged record counts, and all 16 signed-out API checks passed. The account of the browser run below remains a mock-only test; it does not claim real Storage uploads or two-device behavior. See FEEDBACK-VALIDATION.md for rollout details.
+
 Followed FEEDBACK-VALIDATION.md in the actual in-app Chromium browser at `http://localhost:4174/`. The mock server intercepted Auth/data/photo requests; no live wedding records or hosted schema were changed. Pinterest was tested using the public example board from its documentation, not the couple's board.
 
 Using `localhost` succeeded where the earlier `127.0.0.1` browser attempt timed out. The initial branch was `b5483c9`; the fixes below were applied and retested during this walkthrough.
@@ -42,6 +44,6 @@ Deletion effects were checked explicitly: installment deletion keeps the $900 pa
 
 ## Still required before release
 
-Actual hosted Storage uploads/downloads and MIME/size enforcement, unrelated-user/signed-out photo access, real two-account sign-in and Realtime/conflict behavior, physical-phone/on-screen-keyboard checks, new-window website navigation, and payments CSV delivery remain unverified in the deployed environment. The approved hosted migration and release merge/publication are still pending authorization. No database migration changed during this browser pass.
+Actual hosted Storage uploads/downloads and MIME/size enforcement, unrelated-user/signed-out photo access, real two-account sign-in and Realtime/conflict behavior, physical-phone/on-screen-keyboard checks, new-window website navigation, and payments CSV delivery remain unverified in the deployed environment. Migration and publication were pending at the time of this browser pass; they were subsequently completed as recorded above. No database migration changed during the mock browser pass itself.
 
 The couple's original checked-off checklist was not modified. This report records the new acceptance run separately.

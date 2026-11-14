@@ -6,7 +6,9 @@ Scope: only the fourteen items Ben and Maya selected after their November 13 wal
 
 All 47 Node tests and static syntax/asset checks pass. The base and planner SQL suites passed at their original migration levels. The new feedback migration/access suite passed in a fresh disposable PostgreSQL 16.4 database with Auth/Storage stubs; local security advisors found no issues. App-level mock checks cover form/action wiring and the chart-polling regression. The subsequent [actual browser acceptance run](BROWSER-ACCEPTANCE.md) tested the mock UI and found four bugs, which were fixed and retested.
 
-No hosted migration, live record edits, release merge, or Pages publication was performed. Retrying with `localhost` enabled browser testing. See the browser report for passes and limits: real hosted behavior, external-window navigation, physical-phone behavior, and the second budget CSV download still need verification.
+Retrying with `localhost` enabled browser testing. See the browser report for passes and limits: real hosted behavior, external-window navigation, physical-phone behavior, and the second budget CSV download still need verification.
+
+**Rollout update — November 14:** the user merged PR #4 and approved the hosted migration. `couple_feedback` was applied to `beyas-big-day` as version `20261114163318`; the file was renamed to match hosted migration history without changing its SQL. Both member-role snapshots enable the feature flag, outsider isolation/immutable-history grants pass, the private bucket and table policies are present, existing record counts are unchanged, and all 16 signed-out API checks pass. The only security-advisor warning is the preexisting disabled leaked-password-protection setting. Do not reapply this migration to that project.
 
 ## Validate in the mock preview first
 
@@ -44,11 +46,11 @@ For every section, check phone width, keyboard operation, focus, dialogs with th
 
 Deletion uses retained private tombstones/history, not physical erasure. Deleted records cannot be restored through the app. Existing guest/task archive/restore remains a separate reversible option. Deleted starter tasks stay deleted when the starter list is reimported. Unbooking keeps payments and existing schedules for reference; rebooking can reactivate those schedules, so review them.
 
-## Approved hosted rollout — still pending
+## Hosted rollout procedure
 
-The user's Git/database instructions require separate authorization before applying shared database migrations or merging a PR that publishes Pages.
+The steps below describe the approved rollout procedure and future fresh-project deployments. The existing project's migration and Pages release are complete as recorded above. Shared migrations and future release merges still require their own authorization under the user's Git/database instructions.
 
-1. Confirm the intended target is `beyas-big-day` (`nennjenlgfkblsmpkzfr`) and review `20261114153958_couple_feedback.sql`, especially audited payment updates, tombstones, cascades, and private Storage policies.
+1. Confirm the intended target is `beyas-big-day` (`nennjenlgfkblsmpkzfr`) and review `20261114163318_couple_feedback.sql`, especially audited payment updates, tombstones, cascades, and private Storage policies.
 2. With explicit authorization, apply the migration once using the recorded migration workflow. Do not run the Auth/Storage bootstrap stubs there. No preexisting wedding rows need to be deleted or bulk-updated.
 3. Check hosted security advisors and run `node scripts/check-public-access.mjs --feedback` (16 signed-out checks). Inspect the private bucket's 5 MB/MIME restrictions and membership-only policies.
 4. Verify actual authenticated photo upload/download, cross-wedding and signed-out denial, two-account changes/deletion/conflicts, and Realtime for events/photo metadata. A Storage stub cannot prove these service behaviors.
@@ -57,7 +59,7 @@ The user's Git/database instructions require separate authorization before apply
 To reproduce the new SQL checks, create a fresh disposable database and run:
 
 ```sh
-psql -v ON_ERROR_STOP=1 -d YOUR_DISPOSABLE_DATABASE -f tests/bootstrap.sql -f supabase/migrations/20261113132432_shared_budget.sql -f tests/access.sql -f supabase/migrations/20261113203508_guests_and_checklist.sql -f tests/planner-access.sql -f tests/storage-bootstrap.sql -f supabase/migrations/20261114153958_couple_feedback.sql -f tests/feedback-access.sql
+psql -v ON_ERROR_STOP=1 -d YOUR_DISPOSABLE_DATABASE -f tests/bootstrap.sql -f supabase/migrations/20261113132432_shared_budget.sql -f tests/access.sql -f supabase/migrations/20261113203508_guests_and_checklist.sql -f tests/planner-access.sql -f tests/storage-bootstrap.sql -f supabase/migrations/20261114163318_couple_feedback.sql -f tests/feedback-access.sql
 ```
 
 The two original access suites run before the new migration because they intentionally test the old immutable-payment/no-unbooking contract. The new suite tests its replacement and the continuing membership boundaries.
