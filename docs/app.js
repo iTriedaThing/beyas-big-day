@@ -4,6 +4,7 @@ import { cents, money, quoteTotal, summarize, installmentBalance, csv, localDate
 import {escapeHTML as esc,button as btn,input,textarea as area,select} from './ui.js';
 import {TASK_WINDOWS,DIETARY_FLAGS,GUEST_TAGS,STARTER_TASKS,householdGuests,guestSummary} from './planner.js';
 import {renderGuests,renderPlanning,plannerOverview,displayDate} from './planner-views.js';
+import {websiteLink,timeZones,countdown,attributionOptions,renderSchedule,renderMoodboard,pinterestBoard,validatePhoto} from './features.js';
 
 const $ = s => document.querySelector(s);
 const initialAuthRedirect = takeAuthRedirect(window.location, window.history);
@@ -12,7 +13,9 @@ const dialog = $('#editor');
 let api, data, totals, weddingId, tab = 'budget', selectedExpense = '', selectedCategory = '', stopLive, loading = false, loadAgain = false, syncStatus = 'Connecting…', noticeTimer;
 let sessionEpoch = 0, handlingAuthRedirect = false;
 const guestFilters = {search:'',rsvp:'',tag:'',view:'active'};
-let taskFilter = 'all';
+let taskFilter = 'all', comparison = 'paid', scheduleFilter = 'upcoming';
+const photoURLs = new Map();
+const photoLoads = new Map();
 const fmt = value => money(value, data.wedding.currency);
 const vendorName = id => data.vendors.find(v => v.id === id)?.name || 'No vendor linked';
 const memberName = id => data.members.find(m => m.user_id === id)?.display_name || id;
@@ -27,13 +30,14 @@ function errorMessage(error) {
   return `${error.message}${api?.pending ? ' The outcome is unconfirmed. Retry the original save; its IDs are preserved in this tab.' : ''}`;
 }
 function resetPrivateUI() {
+  for(const url of photoURLs.values()) URL.revokeObjectURL(url);photoURLs.clear();photoLoads.clear();
   sessionEpoch++; stopLive?.(); stopLive = null; data = null; weddingId = null;
   if (dialog.open) dialog.close();
   $('#account').replaceChildren(); $('#main').replaceChildren(); $('#notice').textContent = '';
 }
 function renderLogin(message = '') {
   $('#account').replaceChildren();
-  $('#main').innerHTML = `<section class="panel login"><p class="eyebrow">JUST THE TWO OF YOU</p><h1>Your day, together.</h1><p>Sign in to your private wedding budget. Your partner’s changes will appear here too.</p><form id="login">${input('email', 'Email', '', 'email', 'required autocomplete="username"')}${input('password', 'Password', '', 'password', 'required autocomplete="current-password"')}<p id="login-error" role="alert">${esc(message)}</p><button type="submit">Sign in</button></form><p>${btn('reset-request', 'Forgot password?')}</p><p class="muted">Use your administrator-provisioned account. No wedding access? Ask the person setting up your planner to add your account as a member.</p></section>`;
+  $('#main').innerHTML = `<section class="panel login"><p class="eyebrow">JUST THE TWO OF YOU</p><h1>Your day, together.</h1><p>Sign in to your private wedding planner. Your partner’s changes will appear here too.</p><form id="login">${input('email', 'Email', '', 'email', 'required autocomplete="username"')}${input('password', 'Password', '', 'password', 'required autocomplete="current-password"')}<p id="login-error" role="alert">${esc(message)}</p><button type="submit">Sign in</button></form><p>${btn('reset-request', 'Forgot password?')}</p><p class="muted">Use your administrator-provisioned account. No wedding access? Ask the person setting up your planner to add your account as a member.</p></section>`;
   $('#login').onsubmit = async event => {
     event.preventDefault(); const form = event.currentTarget, fields = new FormData(form);
     form.querySelector('button').disabled = true;
@@ -115,7 +119,7 @@ function renderAccount() {
 function connectLive() {
   stopLive?.();
   if (!weddingId || !api.session) return;
-  stopLive = subscribe(api, weddingId, () => reload(), status => { syncStatus = status; if ($('#sync')) $('#sync').textContent = status; },!!data?.planner_ready);
+  stopLive = subscribe(api, weddingId, () => reload(), status => { syncStatus = status; if ($('#sync')) $('#sync').textContent = status; },!!data?.planner_ready,!!data?.feedback_ready);
 }
 async function reload() {
   if (loading) { loadAgain = true; return; }
@@ -125,10 +129,11 @@ async function reload() {
     const snapshot = await api.snapshot(weddingId);
     if (epoch !== sessionEpoch) return;
     if (!snapshot.wedding) { resetPrivateUI(); $('#main').innerHTML = '<h1>Wedding access removed</h1><p>Contact your administrator.</p>'; renderAccount(); return; }
-    const previousReady = data?.planner_ready;
-    data = {...snapshot,invitations:snapshot.invitations||[],guests:snapshot.guests||[],tasks:snapshot.tasks||[]};
+    const previousReady = data?.planner_ready, previousFeedback=data?.feedback_ready;
+    data = {...snapshot,invitations:snapshot.invitations||[],guests:snapshot.guests||[],tasks:snapshot.tasks||[],events:snapshot.events||[],vendor_photos:snapshot.vendor_photos||[]};
+    if(selectedCategory&&!data.categories.some(c=>c.id===selectedCategory))selectedCategory='';
     totals = summarize(data); render();
-    if (stopLive && previousReady !== data.planner_ready) connectLive();
+    if (stopLive && (previousReady !== data.planner_ready||previousFeedback!==data.feedback_ready)) connectLive();
   } catch (error) {
     if (epoch !== sessionEpoch) return;
     if (!api.session) { resetPrivateUI(); renderLogin('Session expired. Sign in again.'); }
@@ -137,31 +142,35 @@ async function reload() {
   } finally { loading = false; if (loadAgain) { loadAgain = false; void reload(); } }
 }
 function render() {
+  const previousBoard=document.querySelector('.moodboard-frame');
   renderAccount();
-  const primary=tab==='guests'?btn('household-new','+ Add household','',''):tab==='planning'?btn('task-new','+ Add task','',''):btn('expense-new','+ Add expense','','')+btn('payment-new','Record payment');
-  $('#main').innerHTML = `<section class="intro"><div><p class="eyebrow">BEN + MAYA · A DAY THAT’S OURS</p><h1>${esc(data.wedding.name)}</h1><p class="intro-note">A little planning. A lot of love.</p><p class="wedding-meta">${data.wedding.wedding_date?esc(displayDate(data.wedding.wedding_date)):'Our date is still a beautiful possibility'}<span>·</span>${esc(data.wedding.currency)}</p></div><div class="actions">${primary}</div></section>
+  const primary=tab==='schedule'?btn('event-new','+ Add event','',''):tab==='moodboard'?btn('moodboard-edit','Link Pinterest board'):tab==='guests'?btn('household-new','+ Add household','',''):tab==='planning'?btn('task-new','+ Add task','',''):btn('expense-new','+ Add expense','','')+btn('payment-new','Record payment');
+  $('#main').innerHTML = `<section class="intro"><div><p class="eyebrow">BEN + MAYA · A DAY THAT’S OURS</p><h1>${esc(data.wedding.name)}</h1><p class="intro-note">A little planning. A lot of love.</p>${countdown(data.wedding.wedding_date,today())}<p class="wedding-meta">${data.wedding.wedding_date?esc(displayDate(data.wedding.wedding_date)):'Our date is still a beautiful possibility'}<span>·</span>${esc(data.wedding.currency)}</p></div><div class="actions">${primary}</div></section>
     <div class="section-head utility-bar"><small id="sync" class="sync-status">${esc(syncStatus)}</small><div class="actions">${api.pending?btn('retry','Retry pending save'):''}${btn('refresh','Refresh')}${btn('settings','Wedding settings')}${btn('export','Budget CSVs')}</div></div>
-    <nav class="planner-nav" aria-label="Planner sections">${[['budget','Budget','01'],['vendors','Vendors & quotes','02'],['guests','Guest list','03'],['planning','Our checklist','04']].map(([id,label,number])=>`<button type="button" data-action="tab-${id}" class="secondary" aria-pressed="${tab===id}"><span aria-hidden="true">${number}</span>${label}</button>`).join('')}</nav>
-    ${tab==='budget'?renderBudget():tab==='vendors'?renderVendors():tab==='guests'?renderGuests(data,guestFilters):renderPlanning(data,taskFilter,today())}`;
+    <nav class="planner-nav" aria-label="Planner sections">${[['budget','Budget','01'],['vendors','Vendors & quotes','02'],['guests','Guest list','03'],['planning','Our checklist','04'],['schedule','Schedule','05'],['moodboard','Mood board','06']].map(([id,label,number])=>`<button type="button" data-action="tab-${id}" class="secondary" aria-pressed="${tab===id}"><span aria-hidden="true">${number}</span>${label}</button>`).join('')}</nav>
+    ${tab==='budget'?renderBudget():tab==='vendors'?renderVendors():tab==='guests'?renderGuests(data,guestFilters):tab==='planning'?renderPlanning(data,taskFilter,today()):tab==='schedule'?renderSchedule(data,today(),scheduleFilter):renderMoodboard(data)}`;
+  const nextBoard=document.querySelector('.moodboard-frame');
+  if(previousBoard&&nextBoard&&previousBoard.getAttribute('src')===nextBoard.getAttribute('src'))nextBoard.replaceWith(previousBoard);
+  void loadPhotos();
 }
 function renderBudget() {
   const room = data.wedding.cap_cents - totals.forecast;
   const next = totals.upcoming[0];
-  return `<div class="cards"><article class="card feature"><a href="#expenses">Forecast</a><span class="amount">${fmt(totals.forecast)}</span><small>${totals.unknown ? `${totals.unknown} item(s) awaiting estimate; total incomplete` : 'One price per expense'}</small></article>
+  return `<div class="cards"><article class="card feature forecast-card"><a class="forecast-link" href="#expenses">Forecast</a><span class="amount">${fmt(totals.forecast)}</span><small>${totals.unknown ? `${totals.unknown} item(s) awaiting estimate; total incomplete` : 'One price per expense'}</small></article>
     <article class="card"><a href="#payments">Paid, net of refunds</a><span class="amount">${fmt(totals.paid)}</span></article><article class="card"><a href="#expenses">Still owed</a><span class="amount">${fmt(totals.owed)}</span><small>Booked expenses only · ${fmt(totals.credit)} vendor credit</small></article><article class="card"><a href="#expenses">${room < 0 ? 'Over wedding cap' : 'Budget room'}</a><span class="amount ${room < 0 ? 'warning' : ''}">${fmt(Math.abs(room))}</span><small>Cap ${fmt(data.wedding.cap_cents)}${totals.unknown ? ' · provisional' : ''}</small></article></div>
     <section class="panel"><div class="section-head"><h2>Next payment</h2><a href="#installments">All installments</a></div>${next ? `<p><strong>${fmt(next.remaining)}</strong> · ${esc(next.label)} · ${esc(expenseName(next.expense_id))}</p><p>${esc(vendorName(data.expenses.find(e => e.id === next.expense_id)?.vendor_id))} · Due ${esc(next.due_date)} ${next.due_date < today() ? '<span class="warning">Overdue</span>' : ''}</p>${btn('payment-installment', 'Record payment', next.id)}` : '<p class="muted">No outstanding installments. Add a due date to a booked expense below.</p>'}
-    <p class="muted">${fmt(totals.allocated)} allocated to item targets · ${fmt(data.wedding.cap_cents - totals.allocated)} left to allocate</p></section>
+    <p class="muted">${fmt(totals.allocated)} allocated to budgeted amounts · ${fmt(data.wedding.cap_cents - totals.allocated)} left to allocate</p></section>
     ${plannerOverview(data,today())}
-    <div class="twocol"><section class="panel"><div class="section-head"><h2>Budget vs. paid</h2><select aria-label="Chart comparison" id="comparison"><option value="paid">Paid</option><option value="forecast">Forecast</option></select></div><div class="legend"><span>Lilac: item targets</span><span>Green: paid / forecast</span></div><div id="bars">${bars('paid')}</div></section><section class="panel"><h2>Spending breakdown</h2>${breakdown()}</section></div>
-    <section class="panel"><div class="section-head"><h2>Category amounts & overages</h2>${btn('category-new', 'Add category')}</div><p class="muted">Targets come from the expenses in each category. Select a category to see its items.</p><div class="table-wrap"><table><thead><tr><th>Category</th><th>Target</th><th>Forecast</th><th>Paid</th><th>Forecast vs. target</th><th></th></tr></thead><tbody>${totals.categories.map(c => `<tr><td>${btn('filter-category', esc(c.name), c.id)}</td><td>${fmt(c.target)}</td><td>${fmt(c.forecast)}${c.unknown ? ' + unknown' : ''}</td><td>${fmt(c.paid)}</td><td class="${c.forecast > c.target ? 'warning' : 'good'}">${variance(c.forecast - c.target)}</td><td>${btn('category-edit', 'Rename', c.id)}</td></tr>`).join('')}</tbody></table></div></section>
+    <div class="twocol"><section class="panel"><div class="section-head"><h2>Budget vs. paid</h2><select aria-label="Chart comparison" id="comparison"><option value="paid" ${comparison==='paid'?'selected':''}>Paid</option><option value="forecast" ${comparison==='forecast'?'selected':''}>Forecast</option></select></div><div class="legend"><span>Lilac: budgeted amounts</span><span>Green: paid / forecast</span></div><div id="bars">${bars(comparison)}</div></section><section class="panel"><h2>Spending breakdown</h2>${breakdown()}</section></div>
+    <section class="panel"><div class="section-head"><h2>Category amounts & overages</h2>${btn('category-new', 'Add category')}</div><p class="muted">Budgeted amounts come from the expenses in each category. Select a category to see its items.</p><div class="table-wrap"><table><thead><tr><th>Category</th><th>Budgeted amount</th><th>Forecast</th><th>Paid</th><th>Forecast vs. budgeted amount</th><th></th></tr></thead><tbody>${totals.categories.map(c => `<tr><td>${btn('filter-category', esc(c.name), c.id)}</td><td>${fmt(c.target)}</td><td>${fmt(c.forecast)}${c.unknown ? ' + unknown' : ''}</td><td>${fmt(c.paid)}</td><td class="${c.forecast > c.target ? 'warning' : 'good'}">${variance(c.forecast - c.target)}</td><td>${btn('category-edit', 'Rename', c.id)}${data.feedback_ready?btn('category-delete','Delete',c.id):''}</td></tr>`).join('')}</tbody></table></div></section>
     <section class="panel" id="expenses"><div class="section-head"><h2>Expenses</h2>${select('category-filter', 'Filter category', [['', 'All categories'], ...opts(data.categories)], selectedCategory)}</div>${expenseTable(totals.rows.filter(e => !selectedCategory || e.category_id === selectedCategory))}</section>
     ${selectedExpense ? renderExpense(selectedExpense) : ''}
     ${renderInstallments()}${renderPayments()}`;
 }
-function variance(value) { return `${fmt(Math.abs(value))} ${value > 0 ? 'over' : value < 0 ? 'under' : 'on target'}`; }
+function variance(value) { return `${fmt(Math.abs(value))} ${value > 0 ? 'over' : value < 0 ? 'under' : 'on budget'}`; }
 function bars(key) {
   const max = Math.max(1, ...totals.categories.flatMap(c => [c.target, Math.abs(c[key])]));
-  return totals.categories.map(c => `<div class="bar-row"><a href="#expenses" data-action="filter-category" data-id="${c.id}">${esc(c.name)}</a><small> · ${fmt(c.target)} target / ${fmt(c[key])} ${key}</small><svg role="img" aria-label="${esc(c.name)}: ${esc(fmt(c.target))} target; ${esc(fmt(c[key]))} ${key}" viewBox="0 0 100 9" width="100%" height="25" preserveAspectRatio="none"><rect width="100" height="9" fill="#eee9ef"/><rect width="${c.target/max*100}" height="4" fill="#b6a5c3"/><rect y="5" width="${Math.abs(c[key])/max*100}" height="4" fill="${c[key]<0?'#a4424c':'#314641'}"/></svg></div>`).join('') || '<p class="empty">Add a category and an expense to begin.</p>';
+  return totals.categories.map(c => `<div class="bar-row"><a href="#expenses" data-action="filter-category" data-id="${c.id}">${esc(c.name)}</a><small> · ${fmt(c.target)} budgeted / ${fmt(c[key])} ${key}</small><svg role="img" aria-label="${esc(c.name)}: ${esc(fmt(c.target))} budgeted; ${esc(fmt(c[key]))} ${key}" viewBox="0 0 100 9" width="100%" height="25" preserveAspectRatio="none"><rect width="100" height="9" fill="#eee9ef"/><rect width="${c.target/max*100}" height="4" fill="#b6a5c3"/><rect y="5" width="${Math.abs(c[key])/max*100}" height="4" fill="${c[key]<0?'#a4424c':'#314641'}"/></svg></div>`).join('') || '<p class="empty">Add a category and an expense to begin.</p>';
 }
 function breakdown() {
   if (totals.paid <= 0 || totals.categories.some(c => c.paid < 0)) return '<p class="muted">A percentage chart needs positive net spending with no category credits. Exact amounts are in the category table below.</p>';
@@ -175,14 +184,13 @@ function breakdown() {
   return `<div class="breakdown"><svg class="donut" viewBox="0 0 42 42" role="img" aria-label="Category shares of payments net of refunds; amounts and percentages listed alongside">${circles}</svg><ul>${totals.categories.filter(c => c.paid > 0).map(c => `<li>${esc(c.name)}: ${fmt(c.paid)} (${(100 * c.paid / totals.paid).toFixed(1)}%)</li>`).join('')}</ul></div>`;
 }
 function expenseTable(rows) {
-  return rows.length ? `<div class="table-wrap"><table><thead><tr><th>Expense / vendor</th><th>Target</th><th>Forecast</th><th>Paid</th><th>Owed / credit</th><th>Actions</th></tr></thead><tbody>${rows.map(e => `<tr><td><strong>${esc(e.title)}</strong><small>${esc(vendorName(e.vendor_id))} · ${e.agreed_cents === null ? 'Planning' : 'Booked'}</small></td><td>${fmt(e.target_cents)}</td><td>${fmt(e.forecast)}${e.variance !== null ? `<small class="${e.variance > 0 ? 'warning' : ''}">${variance(e.variance)}</small>` : ''}</td><td>${fmt(e.paid)}</td><td>${fmt(e.owed)}${e.credit ? `<small>${fmt(e.credit)} credit</small>` : ''}</td><td>${btn('expense-open', 'Details & quotes', e.id)}${btn('payment-expense', 'Payment / refund', e.id)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">No expenses here yet. Add a planned expense or a purchase paid in full.</p>';
+  return rows.length ? `<div class="table-wrap"><table><thead><tr><th>Expense / vendor</th><th>Budgeted amount</th><th>Forecast</th><th>Paid</th><th>Owed / credit</th><th>Actions</th></tr></thead><tbody>${rows.map(e => `<tr><td><strong>${esc(e.title)}</strong><small>${esc(vendorName(e.vendor_id))} · ${e.agreed_cents === null ? 'Planning' : 'Booked'}</small></td><td>${fmt(e.target_cents)}</td><td>${fmt(e.forecast)}${e.variance !== null ? `<small class="${e.variance > 0 ? 'warning' : ''}">${variance(e.variance)}</small>` : ''}</td><td>${fmt(e.paid)}</td><td>${fmt(e.owed)}${e.credit ? `<small>${fmt(e.credit)} credit</small>` : ''}</td><td>${btn('expense-open', 'Details & quotes', e.id)}${btn('payment-expense', 'Payment / refund', e.id)}${data.feedback_ready?btn('expense-delete','Delete',e.id):''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">No expenses here yet. Add a planned expense or a purchase paid in full.</p>';
 }
 function renderQuote(q, expense) {
   const vendor = data.vendors.find(v => v.id === q.vendor_id);
-  const contact = [vendor?.contact_name, vendor?.email, vendor?.phone, vendor?.website].filter(Boolean).join(' · ');
   const booked = q.id === expense.booked_quote_id;
   return `<article class="quote ${q.id === expense.preferred_quote_id ? 'preferred' : ''}">
-    <h3>${esc(q.package_name)}</h3><p>${esc(vendorName(q.vendor_id))}</p><p class="muted">${esc(contact)}</p>
+    <h3>${esc(q.package_name)}</h3><p>${esc(vendorName(q.vendor_id))}</p><p class="muted">${esc([vendor?.contact_name,vendor?.email,vendor?.phone].filter(Boolean).join(' · '))} ${websiteLink(vendor?.website||'')}</p>
     <p class="amount">${fmt(quoteTotal(q))}</p>
     <small>${q.pricing_basis === 'per_person' ? `${fmt(q.unit_cents)} per guest × ${q.headcount} guests` : 'Fixed package price'}</small>
     <p>${esc(q.details)}</p><p>Rating: ${q.rating ? `${q.rating}/5` : 'Not rated'}</p><p>${esc(q.notes)}</p>
@@ -190,34 +198,35 @@ function renderQuote(q, expense) {
       ${q.id === expense.preferred_quote_id ? '<p class="badge">PREFERRED</p>' : ''}
       <div class="actions">${btn('quote-edit', 'Edit quote', q.id)}
       ${expense.agreed_cents === null ? btn('prefer', 'Prefer this quote', q.id) + btn('book-quote', 'Book this package', q.id) : ''}</div>`}
-  </article>`;
+  ${data.feedback_ready&&!booked?btn('quote-delete','Delete quote',q.id):''}</article>`;
 }
 function renderExpense(id) {
   const e = data.expenses.find(e => e.id === id); if (!e) return '';
   const quotes = data.quotes.filter(q => q.expense_id === id);
-  return `<section class="panel" id="expense-detail"><div class="section-head"><h2>${esc(e.title)}</h2><div class="actions">${btn('expense-edit', 'Edit expense', id)}${e.agreed_cents !== null ? btn('amend', 'Amend agreement', id) : btn('book', 'Book expense', id)}${btn('quote-new', 'Add quote', id)}${e.agreed_cents !== null ? btn('installment-new', 'Add installment', id) : ''}</div></div><p>${esc(e.notes)}</p>
+  return `<section class="panel" id="expense-detail"><div class="section-head"><h2>${esc(e.title)}</h2><div class="actions">${btn('expense-edit', 'Edit expense', id)}${e.agreed_cents !== null ? btn('amend', 'Amend agreement', id)+(data.feedback_ready?btn('unbook','Unbook agreement',id):'') : btn('book', 'Book expense', id)}${btn('quote-new', 'Add quote', id)}${e.agreed_cents !== null ? btn('installment-new', 'Add installment', id) : ''}</div></div><p>${esc(e.notes)}</p>
     ${e.agreed_cents !== null ? `<p>Agreed price: <strong>${fmt(e.agreed_cents)}</strong>. Quote edits do not change this agreement.</p>` : '<p class="muted">Compare offers below. Prefer one to use its total in the forecast.</p>'}
     <div class="quote-grid">${quotes.map(q => renderQuote(q,e)).join('') || '<p class="empty">No quotes yet. Add offers for this job to compare packages side by side.</p>'}</div>
-    ${e.agreed_cents === null && e.preferred_quote_id ? btn('clear-preferred', 'Use item target instead', e.id) : ''}
-    ${data.amendments.filter(a => a.expense_id === id).map(a => `<p><small>Amendment ${esc(a.created_at.slice(0,10))} · ${fmt(a.previous_cents)} → ${fmt(a.agreed_cents)} · ${esc(a.reason)} · ${esc(memberName(a.entered_by))}</small></p>`).join('')}
+    ${e.agreed_cents === null && e.preferred_quote_id ? btn('clear-preferred', 'Use budgeted amount instead', e.id) : ''}
+    ${data.amendments.filter(a => a.expense_id === id).map(a => `<p><small>Amendment ${esc(a.created_at.slice(0,10))} · ${fmt(a.previous_cents)} → ${a.agreed_cents===null?'Unbooked':fmt(a.agreed_cents)} · ${esc(a.reason)} · ${esc(memberName(a.entered_by))}</small></p>`).join('')}
     <p class="muted">Installment schedule: ${fmt(data.installments.filter(i => i.expense_id === id).reduce((s,i) => s+i.amount_cents,0))} · Agreed: ${fmt(e.agreed_cents)}. Unlinked payments need reconciliation against the schedule.</p></section>`;
 }
 function renderInstallments() {
   return `<section class="panel" id="installments"><h2>Installments & due dates</h2><p class="muted">Balances use linked payments and refunds. Unlinked transactions are included in the expense balance, but do not settle an installment.</p>${data.installments.length ? `<div class="table-wrap"><table><thead><tr><th>Due</th><th>Expense / installment</th><th>Scheduled</th><th>Remaining</th><th></th></tr></thead><tbody>${data.installments.map(i => {
     const balance = installmentBalance(i, data.payments);
-    return `<tr><td>${esc(i.due_date)}${balance > 0 && i.due_date < today() ? '<small class="warning">Overdue</small>' : ''}</td><td>${esc(expenseName(i.expense_id))}<small>${esc(i.label)}</small></td><td>${fmt(i.amount_cents)}</td><td>${fmt(Math.max(0,balance))}${balance < 0 ? `<small>${fmt(-balance)} credit</small>` : ''}</td><td>${btn('payment-installment','Payment / refund',i.id)}${btn('installment-edit','Edit',i.id)}</td></tr>`;
+    return `<tr><td>${esc(i.due_date)}${balance > 0 && i.due_date < today() ? '<small class="warning">Overdue</small>' : ''}</td><td>${esc(expenseName(i.expense_id))}<small>${esc(i.label)}</small></td><td>${fmt(i.amount_cents)}</td><td>${fmt(Math.max(0,balance))}${balance < 0 ? `<small>${fmt(-balance)} credit</small>` : ''}</td><td>${btn('payment-installment','Payment / refund',i.id)}${btn('installment-edit','Edit',i.id)}${data.feedback_ready?btn('installment-delete','Delete',i.id):''}</td></tr>`;
   }).join('')}</tbody></table></div>` : '<p class="empty">Open a booked expense to add its deposit and balance dates.</p>'}</section>`;
 }
 function renderPayments() {
-  return `<section class="panel" id="payments"><h2>Payment ledger</h2><p class="muted">Payments are preserved. Correct mistakes with an offsetting refund or payment. ${fmt(totals.unallocated)} net payments are not linked to installments.</p>${data.payments.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Expense / installment</th><th>Type / amount</th><th>Payer / entered by</th><th>Notes</th></tr></thead><tbody>${[...data.payments].reverse().map(p => `<tr><td>${esc(p.paid_on)}</td><td>${esc(expenseName(p.expense_id))}<small>${esc(data.installments.find(i => i.id === p.installment_id)?.label || 'Unallocated — reconcile if scheduled')}</small></td><td>${esc(p.kind)}<small>${fmt(p.amount_cents)}</small></td><td>${esc(memberName(p.payer_id))}<small>Entered by ${esc(memberName(p.entered_by))}</small></td><td>${esc(p.notes)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">Your first deposit, purchase, or refund will appear here.</p>'}</section>`;
+  return `<section class="panel" id="payments"><h2>Payment ledger</h2><p class="muted">${data.feedback_ready?'Edit or delete incorrect records below. Changes keep a private history and update balances; they do not move money.':'Payments are preserved. Record an offsetting transaction to correct a mistake.'} ${fmt(totals.unallocated)} net payments are not linked to installments.</p>${data.payments.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Expense / installment</th><th>Type / amount</th><th>Payer / entered by</th><th>Notes / actions</th></tr></thead><tbody>${[...data.payments].reverse().map(p => `<tr><td>${esc(p.paid_on)}</td><td>${esc(expenseName(p.expense_id))}<small>${esc(data.installments.find(i => i.id === p.installment_id)?.label || (p.installment_id?'Schedule paused while unbooked':'Unallocated — reconcile if scheduled'))}</small></td><td>${esc(p.kind)}<small>${fmt(p.amount_cents)}</small></td><td>${esc(memberName(p.payer_id))}<small>Entered by ${esc(memberName(p.entered_by))}</small></td><td>${esc(p.notes)}${data.feedback_ready?btn('payment-edit','Edit',p.id)+btn('payment-delete','Delete',p.id)+btn('payment-history','History',p.id):''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">Your first deposit, purchase, or refund will appear here.</p>'}</section>`;
 }
 function renderVendors() {
-  return `<section class="panel"><div class="section-head"><h2>Your vendors</h2>${btn('vendor-new','Add vendor','','')}</div><p class="muted">Contact details live here. Bookings and balances come from the same expenses as your budget.</p>${data.vendors.map(v => {
+  return `<section class="panel"><div class="section-head"><h2>Your vendors</h2>${btn('vendor-new','Add vendor','','')}</div><p class="muted">Contact details live here. Bookings and balances come from the same expenses as your budget.</p>${[...data.vendors].sort((a,b)=>(b.rating||0)-(a.rating||0)||a.name.localeCompare(b.name)).map(v => {
     const rows = totals.rows.filter(e => e.vendor_id === v.id && e.agreed_cents !== null);
-    return `<article class="panel"><div class="section-head"><h3>${esc(v.name)}</h3>${btn('vendor-edit','Edit contact',v.id)}</div><p>${esc(v.contact_name)} · ${esc(v.email)} · ${esc(v.phone)}</p><p>${esc(v.website)}</p><p>${esc(v.notes)}</p>${rows.length ? expenseTable(rows) : '<p class="muted">No booked expenses yet.</p>'}</article>`;
+    return `<article class="panel"><div class="section-head"><h3>${esc(v.name)}</h3><div class="actions">${btn('vendor-edit','Edit details',v.id)}${data.feedback_ready?btn('photo-new','Attach picture',v.id)+btn('event-vendor','Schedule visit',v.id)+btn('vendor-delete','Delete',v.id):''}</div></div><p>${esc(v.contact_name)} · ${esc(v.email)} · ${esc(v.phone)}</p><p>${websiteLink(v.website)}</p><p>${esc(v.vendor_kind==='venue'?'Venue':'Vendor')} · ${v.rating?`${v.rating}/5 overall rating`:'Not rated yet'}</p>${vendorPhotos(v.id)}<p>${esc(v.notes)}</p>${rows.length ? expenseTable(rows) : '<p class="muted">No booked expenses yet.</p>'}</article>`;
   }).join('') || '<p class="empty">Add vendor contacts, then add packages to an expense to compare quotes.</p>'}</section><section class="panel"><h2>Compare offers by expense</h2>${expenseTable(totals.rows)}</section>${selectedExpense ? renderExpense(selectedExpense) : ''}`;
 }
 function openForm(title, fields, save) {
+  $('#save').hidden=false;
   $('#dialog-title').textContent = title; $('#fields').innerHTML = fields; $('#form-error').textContent = '';
   $('#save').disabled = false; $('#save').textContent = api.pending ? 'Retry original save' : 'Save';
   $('#edit-form').onsubmit = async event => {
@@ -242,7 +251,7 @@ function insert(table, record) {
 }
 function settingsForm() {
   const w = data.wedding;
-  openForm('Wedding settings', input('name','Wedding name',w.name,'text','required maxlength="120"') + select('currency','Currency (two decimal places)', ['USD','CAD','GBP','EUR','AUD','NZD'].map(c => [c,c]),w.currency) + amount('cap','Wedding cap',w.cap_cents,true) + input('wedding_date','Wedding date (optional)',w.wedding_date || '','date') + (data.planner_ready?input('planning_headcount','Planning guest count (optional)',w.planning_headcount??'','number','min="0" max="100000" step="1"'):'') + input('time_zone','IANA time zone',w.time_zone,'text','required') + '<p class="muted">Currency is fixed after your first expense. Dates follow your wedding’s time zone. Planning headcount is a starting point for new per-guest quotes; existing offers keep their saved count.</p>', f => update('weddings',w,{name:f.name.trim(),currency:f.currency,cap_cents:cents(f.cap),wedding_date:f.wedding_date || null,time_zone:f.time_zone.trim(),...(data.planner_ready?{planning_headcount:f.planning_headcount===''?null:Number(f.planning_headcount)}:{})}));
+  openForm('Wedding settings', input('name','Wedding name',w.name,'text','required maxlength="120"') + select('currency','Currency (two decimal places)', ['USD','CAD','GBP','EUR','AUD','NZD'].map(c => [c,c]),w.currency) + amount('cap','Wedding cap',w.cap_cents,true) + input('wedding_date','Wedding date (optional)',w.wedding_date || '','date') + (data.planner_ready?input('planning_headcount','Planning guest count (optional)',w.planning_headcount??'','number','min="0" max="100000" step="1"'):'') + select('time_zone','Time zone',timeZones(w.time_zone),w.time_zone) + '<p class="muted">Currency is fixed after your first expense. Dates follow your wedding’s time zone. Planning headcount is a starting point for new per-guest quotes; existing offers keep their saved count.</p>', f => update('weddings',w,{name:f.name.trim(),currency:f.currency,cap_cents:cents(f.cap),wedding_date:f.wedding_date || null,time_zone:f.time_zone.trim(),...(data.planner_ready?{planning_headcount:f.planning_headcount===''?null:Number(f.planning_headcount)}:{})}));
   if (data.expenses.length) $('#f-currency').disabled = true;
   // Disabled controls are omitted from FormData; retain the original currency.
   if (data.expenses.length) { const hidden = document.createElement('input'); hidden.type='hidden'; hidden.name='currency'; hidden.value=w.currency; $('#fields').append(hidden); }
@@ -256,7 +265,7 @@ function householdForm(id) {
   if(!requirePlanner())return;
   const household=data.invitations.find(i=>i.id===id), householdId=household?.id||crypto.randomUUID();
   const fields=input('household_name','Household name',household?.household_name||'','text','required maxlength="160" placeholder="The Rivera family"')
-    +(!household?area('guest_names','Guest names · one per line')+input('unnamed_count','Unnamed companions',0,'number','required min="0" max="20" step="1"')+'<p class="muted">Each name and each unnamed companion is one invited seat.</p>':'')
+    +(!household?area('guest_names','Guest names · one per line')+input('unnamed_count','Unnamed companions',0,'number','required min="0" max="20" step="1"')+(data.feedback_ready?select('invited_by','Guests from',attributionOptions(data.members)):'')+'<p class="muted">Each name and each unnamed companion is one invited seat.</p>':'')
     +input('contact_email','Household email',household?.contact_email||'','email','maxlength="254"')
     +input('phone','Phone',household?.phone||'','tel','maxlength="100"')
     +area('mailing_address','Mailing address',household?.mailing_address||'')
@@ -267,7 +276,7 @@ function householdForm(id) {
     const record={household_name:f.household_name.trim(),contact_email:f.contact_email.trim(),phone:f.phone.trim(),mailing_address:f.mailing_address,
       save_the_date_sent_on:f.save_the_date_sent_on||null,invitation_sent_on:f.invitation_sent_on||null,notes:f.notes};
     if(household)return update('invitations',household,record);
-    const guests=householdGuests(f.guest_names,Number(f.unnamed_count)).map(g=>({...g,id:crypto.randomUUID()}));
+    const guests=householdGuests(f.guest_names,Number(f.unnamed_count)).map(g=>({...g,id:crypto.randomUUID(),...(data.feedback_ready?{invited_by:f.invited_by||null}:{})}));
     return operation('rpc/create_household',{i:{...record,id:householdId,wedding_id:weddingId},g:guests});
   });
   $('#f-mailing_address').maxLength=1000;
@@ -280,6 +289,7 @@ function guestForm(id,invitationId) {
     +input('name','Guest name (blank for an unnamed companion)',guest?.name||'','text','maxlength="120"')
     +checkbox('is_companion','This guest is a companion',guest?.is_companion)
     +select('rsvp','Reply',[['pending','Awaiting reply'],['yes','Joyfully attending'],['no','Unable to attend']],guest?.rsvp||'pending')
+    +(data.feedback_ready?select('invited_by','Guest from',attributionOptions(data.members),guest?.invited_by||''):'')
     +select('tag','Relationship',[['','No tag'],...GUEST_TAGS.map(t=>[t,t])],guest?.tag||'')
     +checkbox('gift_received','Gift received',guest?.gift_received)
     +'<fieldset class="dietary-options"><legend>Dietary needs · choose all that apply</legend>'
@@ -288,7 +298,7 @@ function guestForm(id,invitationId) {
     +area('caterer_confirmation','Caterer’s response / confirmation',guest?.caterer_confirmation||''),f=>{
       const name=f.name.trim()||null,is_companion=f.is_companion==='on';
       if(!name&&!is_companion)throw new Error('Enter a name or mark this guest as an unnamed companion.');
-      const record={invitation_id:f.invitation_id,name,is_companion,rsvp:f.rsvp,tag:f.tag,gift_received:f.gift_received==='on',
+      const record={...(data.feedback_ready?{invited_by:f.invited_by||null}:{}),invitation_id:f.invitation_id,name,is_companion,rsvp:f.rsvp,tag:f.tag,gift_received:f.gift_received==='on',
         dietary_flags:DIETARY_FLAGS.filter(([key])=>f[`diet_${key}`]==='on').map(([key])=>key),dietary_notes:f.dietary_notes,caterer_confirmation:f.caterer_confirmation};
       return guest?update('guests',guest,record):insert('guests',record);
     });
@@ -320,10 +330,10 @@ async function changePlannerRecord(table,id,fields) {
 function exportGuests() {
   const rows=guestSummary(data.invitations,data.guests).active.map(g=>{
     const i=data.invitations.find(i=>i.id===g.invitation_id);
-    return [g.id,i.household_name,g.name||'Unnamed companion',g.is_companion,g.rsvp,g.tag,g.gift_received,
+    return [g.id,i.household_name,g.name||'Unnamed companion',g.invited_by?memberName(g.invited_by):'Together / unspecified',g.is_companion,g.rsvp,g.tag,g.gift_received,
       i.contact_email,i.phone,i.mailing_address,i.save_the_date_sent_on,i.invitation_sent_on,(g.dietary_flags||[]).join('; '),g.dietary_notes,g.caterer_confirmation];
   });
-  const url=URL.createObjectURL(new Blob([csv([['guest_id','household','guest_name','companion','rsvp','relationship','gift_received','email','phone','address','save_the_date_sent','invitation_sent','dietary_flags','guest_request','caterer_confirmation'],...rows])],{type:'text/csv;charset=utf-8'}));
+  const url=URL.createObjectURL(new Blob([csv([['guest_id','household','guest_name','invited_by','companion','rsvp','relationship','gift_received','email','phone','address','save_the_date_sent','invitation_sent','dietary_flags','guest_request','caterer_confirmation'],...rows])],{type:'text/csv;charset=utf-8'}));
   const link=document.createElement('a');link.href=url;link.download='wedding-guests.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   notify('Exported active guests. Keep this file private.');
 }
@@ -333,7 +343,7 @@ function categoryForm(id) {
 }
 function vendorForm(id) {
   const v = data.vendors.find(v => v.id === id);
-  openForm(v ? 'Edit vendor' : 'Add vendor', input('name','Vendor name',v?.name || '','text','required maxlength="120"') + input('contact_name','Contact person',v?.contact_name) + input('email','Email',v?.email,'email') + input('phone','Phone',v?.phone,'tel') + input('website','Website',v?.website,'url') + area('notes','Notes',v?.notes), f => v ? update('vendors',v,f) : insert('vendors',f));
+  openForm(v ? 'Edit vendor' : 'Add vendor', input('name','Vendor name',v?.name || '','text','required maxlength="120"') + input('contact_name','Contact person',v?.contact_name) + input('email','Email',v?.email,'email') + input('phone','Phone',v?.phone,'tel') + input('website','Website',v?.website,'url') +(data.feedback_ready?select('vendor_kind','Type',[['vendor','Vendor'],['venue','Venue']],v?.vendor_kind||'vendor')+select('rating','Overall rating',[['','Not rated'],...['1','2','3','4','5'].map(r=>[r,`${r}/5`])],String(v?.rating||'')):'')+ area('notes','Notes',v?.notes), f => {const record={...f,...(data.feedback_ready?{rating:f.rating?Number(f.rating):null}:{})};return v ? update('vendors',v,record) : insert('vendors',record);});
 }
 function expenseForm(id) {
   if (!data.categories.length) { categoryForm(); return; }
@@ -344,7 +354,7 @@ function expenseForm(id) {
   ]) : '')
     + input('title','Expense name',e?.title || '','text','required maxlength="160"')
     + select('category_id','Category',opts(data.categories),e?.category_id || data.categories[0].id)
-    + amount('target','Item target (blank = unknown; 0 is a real target)',e?.target_cents ?? null)
+    + amount('target','Budgeted amount (blank = unknown; 0 is a real amount)',e?.target_cents ?? null)
     + (!booked ? select('vendor_id','Vendor (optional)',[['','No vendor linked'],...opts(data.vendors)],e?.vendor_id || '') : '')
     + area('notes','Notes',e?.notes)
     + (!e ? '<div id="agreement-fields" hidden>'
@@ -396,15 +406,94 @@ function installmentForm(id, expenseId) {
     return i ? update('installments',i,fields) : insert('installments',{...fields,expense_id:expenseId});
   });
 }
-function paymentForm(expenseId = '', installmentId = '') {
+function paymentForm(expenseId = '', installmentId = '', paymentId = '') {
   if (!data.expenses.length) { expenseForm(); return; }
-  const id = crypto.randomUUID(), chosen = expenseId || data.expenses[0].id;
-  openForm('Record payment or refund',select('expense_id','Expense',opts(data.expenses,'title'),chosen) + select('kind','Transaction type',[['payment','Payment / deposit'],['refund','Refund from vendor']]) + amount('amount','Amount',null,true) + input('paid_on','Payment / refund date',today(),'date','required') + select('payer_id','Paid by / refunded to',data.members.map(m => [m.user_id,m.display_name]),api.session.user.id) + '<div id="installment-select"></div>' + area('notes','Notes') + '<p class="muted">You can record a payment made by either partner. Your account is separately recorded as the person entering it.</p>', f => operation('rpc/record_payment',{p:{id,wedding_id:weddingId,expense_id:f.expense_id,installment_id:f.installment_id || null,kind:f.kind,amount_cents:cents(f.amount),paid_on:f.paid_on,payer_id:f.payer_id,notes:f.notes}}));
+  const payment=data.payments.find(p=>p.id===paymentId);
+  const id = payment?.id||crypto.randomUUID(), chosen = payment?.expense_id||expenseId || data.expenses[0].id;
+  installmentId=payment?.installment_id||installmentId;
+  openForm(payment?'Edit payment or refund':'Record payment or refund',select('expense_id','Expense',opts(data.expenses,'title'),chosen) + select('kind','Transaction type',[['payment','Payment / deposit'],['refund','Refund from vendor']],payment?.kind||'payment') + amount('amount','Amount',payment?.amount_cents??null,true) + input('paid_on','Payment / refund date',payment?.paid_on||today(),'date','required') + select('payer_id','Paid by / refunded to',data.members.map(m => [m.user_id,m.display_name]),payment?.payer_id||api.session.user.id) + '<div id="installment-select"></div>' + area('notes','Notes',payment?.notes||'') + '<p class="muted">Recording or editing a transaction does not move money. Original recorder attribution and change history are preserved.</p>', f => {
+    const record={expense_id:f.expense_id,installment_id:f.installment_id || null,kind:f.kind,amount_cents:cents(f.amount),paid_on:f.paid_on,payer_id:f.payer_id,notes:f.notes};
+    if(!record.amount_cents)throw new Error('Payments and refunds must be greater than zero.');
+    return payment?update('payments',payment,record):operation('rpc/record_payment',{p:{id,wedding_id:weddingId,...record}});
+  });
   const draw = () => {
     const expense = $('#f-expense_id').value;
     $('#installment-select').innerHTML = select('installment_id','Allocate to installment',[['','Unallocated — reconcile if scheduled'],...data.installments.filter(i => i.expense_id === expense).map(i => [i.id,`${i.label} · ${i.due_date} · ${fmt(Math.max(0,installmentBalance(i,data.payments)))} open`])],installmentId);
   };
   draw(); $('#f-expense_id').onchange = () => { installmentId=''; draw(); };
+}
+function requireFeedback() {
+  if(!data.feedback_ready)throw new Error('These updates need the reviewed database migration before they can be used.');
+}
+function unbookForm(id) {
+  requireFeedback();const e=data.expenses.find(e=>e.id===id);
+  openForm('Unbook agreement',`<p>Return ${esc(e.title)} to planning. Forecast returns to its budgeted amount. Existing payments and agreement history stay recorded; installment reminders pause until it is booked again. This does not cancel a real vendor contract or refund money.</p>`+area('reason','Reason for unbooking'),f=>{
+    if(f.reason.trim().length<3)throw new Error('Enter a reason for unbooking.');
+    return update('expenses',e,{agreed_cents:null,preferred_quote_id:null,booked_quote_id:null,amendment_reason:f.reason.trim()});
+  });
+}
+function deleteForm(table,id) {
+  requireFeedback();const record=data[table].find(r=>r.id===id);if(!record)throw new Error('Refresh and review this record.');
+  const label=record.title||record.name||record.household_name||record.package_name||record.label||record.caption||table.replaceAll('_',' ');
+  const messages={
+    categories:'This also deletes every expense in this category, their quotes, installments, and payment/refund records from active totals.',
+    vendors:'This also deletes expenses linked to this vendor, their payments and schedules, all offers from this vendor, and attached pictures. Scheduled visits remain, without the vendor link.',
+    expenses:'This also deletes its quotes, installments, and payments/refunds from active totals.',
+    invitations:'This also deletes every guest in this household and removes their seats and replies from counts.',
+    installments:'Its payments remain recorded but become unallocated. This does not change the expense agreement.',
+    quotes:'If this is preferred, forecast returns to the budgeted amount. Unbook an agreement before deleting its booked quote.',
+    payments:'This removes the transaction from balances and may reopen or reduce an amount owed. It does not refund or transfer money.',
+    guests:'This removes this person from active seat, RSVP, and dietary counts.',
+    tasks:'This removes this task from checklist progress and the schedule.',events:'This removes the event from the schedule.',vendor_photos:'This removes the picture from the vendor gallery.'
+  };
+  openForm(`Delete ${label}`,`<p class="warning">${esc(messages[table])}</p><p>This removes it from the planner and exports. Private history is retained for accountability. There is no restore button for deleted records.</p>`+input('confirm','Type DELETE to confirm','','text','required autocomplete="off"'),f=>{
+    if(f.confirm!=='DELETE')throw new Error('Type DELETE to confirm.');
+    return operation('rpc/delete_record',{t:table,r:id,v:record.version});
+  });
+}
+async function paymentHistory(id) {
+  const history=await api.request(`record_history?table_name=eq.payments&record_id=eq.${encodeURIComponent(id)}&order=created_at.desc`);
+  openForm('Payment change history',history.map(h=>`<article><p>${esc(h.created_at)} · ${esc(memberName(h.entered_by))}</p><p>${esc(h.previous.kind)} ${fmt(h.previous.amount_cents)} on ${esc(h.previous.paid_on)} → ${esc(h.current_record.kind)} ${fmt(h.current_record.amount_cents)} on ${esc(h.current_record.paid_on)}</p><p>Payer: ${esc(memberName(h.previous.payer_id))} → ${esc(memberName(h.current_record.payer_id))}</p><p>Expense: ${esc(expenseName(h.previous.expense_id))} → ${esc(expenseName(h.current_record.expense_id))}</p><p>Installment: ${esc(h.previous.installment_id||'Unallocated')} → ${esc(h.current_record.installment_id||'Unallocated')}</p><p>Notes: ${esc(h.previous.notes)} → ${esc(h.current_record.notes)}</p></article>`).join('')||'<p>No edits recorded yet.</p>',()=>{});
+  $('#save').hidden=true;
+}
+function eventForm(id,vendorId='') {
+  requireFeedback();const e=data.events.find(e=>e.id===id);
+  openForm(e?'Edit scheduled event':'Schedule a tour, tasting, or appointment',input('title','Event',e?.title||'','text','required maxlength="160"')
+    +select('kind','Type',['Tour','Tasting','Appointment','Other'].map(k=>[k,k]),e?.kind||'Tour')
+    +input('event_date','Date',e?.event_date||today(),'date','required')+input('start_time',`Time (optional) · ${data.wedding.time_zone}`,e?.start_time?.slice(0,5)||'','time')
+    +input('location','Location',e?.location||'','text','maxlength="500"')+select('vendor_id','Vendor / venue (optional)',[['','No vendor linked'],...opts(data.vendors)],e?.vendor_id||vendorId)
+    +checkbox('completed','Completed',e?.completed)+area('notes','Notes',e?.notes||''),f=>{
+      const record={...f,title:f.title.trim(),vendor_id:f.vendor_id||null,start_time:f.start_time||null,completed:f.completed==='on'};
+      return e?update('events',e,record):insert('events',record);
+    });
+}
+function moodboardForm() {
+  requireFeedback();openForm('Link our Pinterest board',input('url','Public Pinterest board URL',data.wedding.pinterest_board_url||'','url','placeholder="https://www.pinterest.com/username/board-name/"')+'<p>Use a public board link, not a shortened pin link. Leave blank to remove it. The preview loads Pinterest content inside the app.</p>',f=>update('weddings',data.wedding,{pinterest_board_url:pinterestBoard(f.url)}));
+}
+function vendorPhotos(id) {
+  return `<div class="vendor-photos">${data.vendor_photos.filter(p=>p.vendor_id===id).map(p=>`<figure><img data-photo="${esc(p.id)}" ${photoURLs.has(p.id)?`src="${photoURLs.get(p.id)}"`:''} alt="${esc(p.caption||'Vendor or venue picture')}" loading="lazy"><figcaption>${esc(p.caption)} ${btn('photo-delete','Delete picture',p.id)}</figcaption><small data-photo-error="${esc(p.id)}"></small></figure>`).join('')}</div>`;
+}
+async function loadPhotos() {
+  if(tab!=='vendors')return;
+  const epoch=sessionEpoch;
+  await Promise.allSettled(data.vendor_photos.map(async p=>{
+    if(!photoURLs.has(p.id)) {
+      if(!photoLoads.has(p.id))photoLoads.set(p.id,api.photo(p.storage_path));
+      try {
+        const blob=await photoLoads.get(p.id);if(epoch!==sessionEpoch)return;
+        if(!photoURLs.has(p.id))photoURLs.set(p.id,URL.createObjectURL(blob));
+      } catch {if(epoch===sessionEpoch){const el=document.querySelector(`[data-photo-error="${p.id}"]`);if(el)el.textContent='Picture unavailable. Refresh to retry.';}return;}
+      finally {if(epoch===sessionEpoch)photoLoads.delete(p.id);}
+    }
+    const el=document.querySelector(`[data-photo="${p.id}"]`);if(el)el.src=photoURLs.get(p.id);
+  }));
+}
+function photoForm(vendorId) {
+  requireFeedback();const id=crypto.randomUUID();let uploaded=false,path='',selectedFile;
+  openForm('Attach a vendor or venue picture',input('file','Picture (JPEG, PNG, WebP; up to 5 MB)','','file','accept="image/jpeg,image/png,image/webp" required')+input('caption','Caption','','text','maxlength="300"'),async f=>{
+    if(!uploaded){selectedFile=$('#f-file').files[0];const ext=validatePhoto(selectedFile);path=`${weddingId}/${vendorId}/${id}.${ext}`;await api.photo(path,{file:selectedFile});uploaded=true;$('#f-file').disabled=true;}
+    return insert('vendor_photos',{id,vendor_id:vendorId,storage_path:path,caption:f.caption});
+  });
 }
 function exportCSVs() {
   const download = (name, rows) => {
@@ -416,6 +505,11 @@ function exportCSVs() {
   notify('Exported expense and payment CSVs. Allow multiple downloads if your browser asks. Amounts are integer cents.');
 }
 const actions = {
+  'tab-schedule':()=>{tab='schedule';render();},'tab-moodboard':()=>{tab='moodboard';render();},
+  'unbook':unbookForm,'payment-edit':id=>paymentForm('','',id),'payment-history':paymentHistory,
+  'event-new':()=>eventForm(),'event-edit':eventForm,'event-vendor':id=>eventForm('',id),
+  'moodboard-edit':moodboardForm,'moodboard-refresh':()=>{const frame=document.querySelector('.moodboard-frame');if(frame)frame.src=frame.getAttribute('src');},'photo-new':photoForm,
+  ...Object.fromEntries([['expense','expenses'],['vendor','vendors'],['category','categories'],['household','invitations'],['guest','guests'],['task','tasks'],['quote','quotes'],['installment','installments'],['payment','payments'],['event','events'],['photo','vendor_photos']].map(([action,table])=>[`${action}-delete`,id=>deleteForm(table,id)])),
   'tab-guests':()=>{tab='guests';render();},'tab-planning':()=>{tab='planning';render();},
   'household-new':()=>householdForm(),'household-edit':householdForm,
   'household-archive':id=>changePlannerRecord('invitations',id,{archived:!data.invitations.find(i=>i.id===id).archived}),
@@ -451,7 +545,8 @@ document.addEventListener('click', async event => {
   try {await actions[target.dataset.action]?.(target.dataset.id,target.dataset.value);} catch(error){notify(errorMessage(error),true); if(data)render();} finally{target.disabled=false;}
 });
 document.addEventListener('change',event => {
-  if(event.target.id==='comparison') $('#bars').innerHTML=bars(event.target.value);
+  if(event.target.id==='comparison'){comparison=event.target.value;$('#bars').innerHTML=bars(comparison);}
+  if(event.target.id==='f-schedule-filter'){scheduleFilter=event.target.value;render();}
   if(event.target.id==='f-category-filter'){selectedCategory=event.target.value;render();}
   const guestSelects={'f-guest-rsvp':'rsvp','f-guest-tag':'tag','f-guest-view':'view'};
   if(guestSelects[event.target.id]){guestFilters[guestSelects[event.target.id]]=event.target.value;render();}

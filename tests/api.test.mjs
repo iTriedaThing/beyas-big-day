@@ -4,6 +4,27 @@ import {Api} from '../docs/api.js';
 const storage=()=>{const map=new Map();return {getItem:k=>map.get(k) ?? null,setItem:(k,v)=>map.set(k,v),removeItem:k=>map.delete(k)};};
 const session={user:{id:'partner-a'},access_token:'test-token',refresh_token:'test-refresh',expires_at:9999999999};
 const config={supabaseUrl:'https://example.supabase.co',publishableKey:'sb_publishable_test'};
+
+test('private photo uploads send the binary file and downloads use authenticated Storage',async()=>{
+  const requests=[],file=new Blob(['sample-bytes'],{type:'image/png'});
+  const api=new Api(config,storage(),async(url,options)=>{requests.push({url,options});return options.method==='POST'?Response.json({Key:'photo'}):new Response(file);});
+  api.setSession(session);
+  await api.photo('wedding/vendor/picture.png',{file});
+  const blob=await api.photo('wedding/vendor/picture.png');
+  assert.equal(requests[0].options.body,file);assert.equal(requests[0].options.headers['Content-Type'],'image/png');
+  assert.equal(requests[1].url,'https://example.supabase.co/storage/v1/object/authenticated/vendor-photos/wedding/vendor/picture.png');
+  assert.equal(requests[1].options.headers.Authorization,'Bearer test-token');assert.equal(await blob.text(),'sample-bytes');
+});
+test('photo requests refresh expired authorization once and report Storage failures',async()=>{
+  let calls=0;
+  const api=new Api(config,storage(),async url=>{
+    if(url.includes('/auth/'))return Response.json({...session,access_token:'renewed',expires_in:3600});
+    calls++;return calls===1?Response.json({message:'expired'},{status:401}):new Response(new Blob(['image']));
+  });
+  api.setSession(session);assert.equal(await (await api.photo('w/v/image.png')).text(),'image');assert.equal(calls,2);
+  const failed=new Api(config,storage(),async()=>Response.json({message:'Not allowed'},{status:403}));failed.setSession(session);
+  await assert.rejects(failed.photo('w/v/image.png'),/Not allowed/);
+});
 test('default fetch preserves the browser global receiver for auth and data requests',async t=>{
   const requests=[];
   t.mock.method(globalThis,'fetch',async function(url){
