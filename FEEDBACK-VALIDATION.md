@@ -4,9 +4,9 @@ Scope: only the fourteen items Ben and Maya selected after their November 13 wal
 
 ## Ready for review
 
-All 46 Node tests and static syntax/asset checks pass. The base and planner SQL suites passed at their original migration levels. The new feedback migration/access suite passed in a fresh disposable PostgreSQL 16.4 database with Auth/Storage stubs; local security advisors found no issues. App-level mock checks cover form/action wiring and the chart-polling regression, not real browser layout.
+All 47 Node tests and static syntax/asset checks pass. The base and planner SQL suites passed at their original migration levels. The new feedback migration/access suite passed in a fresh disposable PostgreSQL 16.4 database with Auth/Storage stubs; local security advisors found no issues. App-level mock checks cover form/action wiring and the chart-polling regression. The subsequent [actual browser acceptance run](BROWSER-ACCEPTANCE.md) tested the mock UI and found four bugs, which were fixed and retested.
 
-No hosted migration, live record edits, release merge, or Pages publication was performed. Browser testing was blocked by localhost timeout and a Windows computer-use URL verification failure. Perform the checks below before releasing.
+No hosted migration, live record edits, release merge, or Pages publication was performed. Retrying with `localhost` enabled browser testing. See the browser report for passes and limits: real hosted behavior, external-window navigation, physical-phone behavior, and the second budget CSV download still need verification.
 
 ## Validate in the mock preview first
 

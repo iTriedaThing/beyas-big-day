@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {webURL,websiteLink,pinterestBoard,timeZones,countdown,scheduleEntries,renderSchedule,renderMoodboard,validatePhoto} from '../docs/features.js';
 
 test('vendor links reject executable protocols and escape labels',()=>{
@@ -33,6 +34,14 @@ test('agenda merges dated tasks, events, and only outstanding installments once,
 test('mood board uses an isolated preview and retains an accessible fallback',()=>{
   const html=renderMoodboard({wedding:{pinterest_board_url:'https://www.pinterest.com/u/b/'}});
   assert.match(html,/<iframe/);assert.ok(!html.includes('allow-same-origin'));assert.match(html,/Open board on Pinterest/);
+});
+test('Pinterest bootstrap and JSONP scripts are allowed only inside the isolated preview',()=>{
+  const policy=file=>readFileSync(new URL(file,import.meta.url),'utf8').match(/content="(default-src[^"\n]+)"/)[1];
+  const frame=policy('../docs/pinterest.html').split(';').find(rule=>rule.trim().startsWith('script-src')).trim().split(/\s+/).slice(1);
+  // The widget loads pinit_main.js and then requests board data through a JSONP script.
+  assert.deepEqual(frame,["'self'",'https://assets.pinterest.com','https://widgets.pinterest.com']);
+  const main=policy('../docs/index.html').split(';').find(rule=>rule.trim().startsWith('script-src')).trim();
+  assert.equal(main,"script-src 'self'");
 });
 test('photo validation rejects empty, oversized, and active content files',()=>{
   assert.equal(validatePhoto({size:5*1024*1024,type:'image/jpeg'}),'jpg');
