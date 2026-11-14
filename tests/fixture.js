@@ -11,7 +11,13 @@ export function installMock() {
     installments:[{id:'deposit',wedding_id:w,expense_id:'catering',label:'Deposit',amount_cents:90000,due_date:'2026-11-15',version:1},{id:'balance',wedding_id:w,expense_id:'catering',label:'Final balance',amount_cents:270000,due_date:'2027-05-01',version:1}],
     payments:[{id:'p1',wedding_id:w,expense_id:'catering',installment_id:'deposit',kind:'payment',amount_cents:90000,paid_on:'2026-11-13',payer_id:a,entered_by:b,notes:'Booking deposit',created_at:'2026-11-13T12:00:00Z'}],amendments:[],
   };
-  fixture.planner_ready=true;
+  fixture.planner_ready=true;fixture.feedback_ready=true;
+  fixture.wedding.pinterest_board_url='';
+  fixture.vendors[0].rating=4;fixture.vendors[0].vendor_kind='vendor';
+  fixture.payments[0].version=1;
+  fixture.events=[{id:'tour',wedding_id:w,title:'Garden venue tour',kind:'Tour',event_date:'2026-12-01',start_time:'10:00:00',location:'The garden',vendor_id:'vendor',notes:'Ask about rain plans',completed:false,version:1}];
+  fixture.vendor_photos=[];fixture.record_history=[];
+  const files=new Map();
   fixture.invitations=[
     {id:'rivera',wedding_id:w,household_name:'The Rivera family',contact_email:'alex@example.invalid',phone:'555-0130',mailing_address:'123 Example Lane\nSample City',save_the_date_sent_on:'2026-11-01',invitation_sent_on:null,notes:'Family friends. We can’t wait to celebrate together.',archived:false,version:1},
     {id:'morgan',wedding_id:w,household_name:'Morgan & Jules',contact_email:'morgan@example.invalid',phone:'',mailing_address:'',save_the_date_sent_on:'2026-11-01',invitation_sent_on:'2026-11-10',notes:'',archived:false,version:1},
@@ -34,6 +40,11 @@ export function installMock() {
   const realFetch=globalThis.fetch;
   globalThis.fetch=async (url,options={})=>{
     if(!String(url).startsWith('https://fixture.supabase.co/'))return realFetch(url,options);
+    if(String(url).includes('/storage/v1/object/')){
+      const path=decodeURIComponent(String(url).split('vendor-photos/')[1]);
+      if(options.method==='POST'){files.set(path,options.body);return Response.json({Key:path});}
+      return files.has(path)?new Response(files.get(path)):Response.json({message:'Missing fixture picture'},{status:404});
+    }
     const body=options.body ? JSON.parse(options.body):null;
     if(String(url).includes('/auth/')){
       if(new URL(url).pathname==='/auth/v1/user')return Response.json({id:a,email:'preview@example.invalid'});
@@ -42,7 +53,31 @@ export function installMock() {
     }
     const path=String(url).split('/rest/v1/')[1];
     if(path.startsWith('weddings?')&&(!options.method||options.method==='GET'))return Response.json([fixture.wedding]);
-    if(path==='rpc/budget_snapshot')return Response.json(structuredClone(fixture));
+    if(path==='rpc/budget_snapshot'){
+      const snapshot=structuredClone(fixture);
+      for(const key of ['categories','vendors','expenses','quotes','installments','payments','invitations','guests','tasks','events','vendor_photos'])snapshot[key]=snapshot[key].filter(r=>!r.deleted);
+      snapshot.installments=snapshot.installments.filter(i=>snapshot.expenses.some(e=>e.id===i.expense_id&&e.agreed_cents!==null));
+      return Response.json(snapshot);
+    }
+    if(path.startsWith('record_history?'))return Response.json(fixture.record_history.filter(h=>h.record_id===new URLSearchParams(path.split('?')[1]).get('record_id')?.slice(3)));
+    if(path==='rpc/delete_record'){
+      const record=fixture[body.t].find(r=>r.id===body.r);
+      if(!record||record.version!==body.v)return Response.json({message:'Someone changed this record. Refresh and review.'},{status:409});
+      const remove=(table,row)=>{
+        if(row.deleted)return;row.deleted=true;
+        if(table==='categories')fixture.expenses.filter(e=>e.category_id===row.id).forEach(e=>remove('expenses',e));
+        if(table==='vendors'){
+          fixture.expenses.filter(e=>e.vendor_id===row.id).forEach(e=>remove('expenses',e));
+          for(const t of ['quotes','vendor_photos'])fixture[t].filter(r=>r.vendor_id===row.id).forEach(r=>remove(t,r));
+          fixture.events.filter(e=>e.vendor_id===row.id).forEach(e=>e.vendor_id=null);
+        }
+        if(table==='expenses')for(const t of ['quotes','payments','installments'])fixture[t].filter(r=>r.expense_id===row.id).forEach(r=>remove(t,r));
+        if(table==='invitations')fixture.guests.filter(g=>g.invitation_id===row.id).forEach(g=>remove('guests',g));
+        if(table==='installments')fixture.payments.filter(p=>p.installment_id===row.id).forEach(p=>p.installment_id=null);
+        if(table==='quotes')fixture.expenses.filter(e=>e.preferred_quote_id===row.id).forEach(e=>e.preferred_quote_id=null);
+      };
+      remove(body.t,record);return Response.json(null);
+    }
     if(path==='rpc/create_household'){
       if(!fixture.invitations.some(i=>i.id===body.i.id))fixture.invitations.push({...body.i,archived:false,version:1});
       for(const g of body.g)if(!fixture.guests.some(p=>p.id===g.id))fixture.guests.push({rsvp:'pending',tag:'',gift_received:false,dietary_flags:[],dietary_notes:'',caterer_confirmation:'',archived:false,version:1,...g,wedding_id:w,invitation_id:body.i.id});
@@ -60,7 +95,10 @@ export function installMock() {
     const [table,query='']=path.split('?');
     if(options.method==='PATCH'){
       const params=new URLSearchParams(query),record=(table==='weddings'?[fixture.wedding]:fixture[table]).find(r=>r.id===params.get('id').slice(3)&&r.version===Number(params.get('version').slice(3)));
-      if(!record)return Response.json([]);Object.assign(record,body,{version:record.version+1});return Response.json([record]);
+      if(!record)return Response.json([]);
+      if(table==='payments')fixture.record_history.push({id:crypto.randomUUID(),record_id:record.id,table_name:'payments',previous:structuredClone(record),current_record:{...record,...body},entered_by:a,created_at:new Date().toISOString()});
+      if(table==='expenses'&&record.agreed_cents!==null&&Object.hasOwn(body,'agreed_cents')&&body.agreed_cents!==record.agreed_cents)fixture.amendments.push({expense_id:record.id,previous_cents:record.agreed_cents,agreed_cents:body.agreed_cents,reason:body.amendment_reason,created_at:new Date().toISOString(),entered_by:a});
+      Object.assign(record,body,{version:record.version+1});return Response.json([record]);
     }
     if(options.method==='POST'&&Array.isArray(fixture[table])){
       const created=[];
