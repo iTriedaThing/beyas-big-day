@@ -11,7 +11,12 @@ export function installMock() {
     installments:[{id:'deposit',wedding_id:w,expense_id:'catering',label:'Deposit',amount_cents:90000,due_date:'2026-11-15',version:1},{id:'balance',wedding_id:w,expense_id:'catering',label:'Final balance',amount_cents:270000,due_date:'2027-05-01',version:1}],
     payments:[{id:'p1',wedding_id:w,expense_id:'catering',installment_id:'deposit',kind:'payment',amount_cents:90000,paid_on:'2026-11-13',payer_id:a,entered_by:b,notes:'Booking deposit',created_at:'2026-11-13T12:00:00Z'}],amendments:[],
   };
-  fixture.planner_ready=true;fixture.feedback_ready=true;
+  fixture.planner_ready=true;fixture.feedback_ready=true;fixture.itinerary_ready=true;
+  fixture.itinerary_items=[
+    {id:'ben-prep',title:'Ben gets ready',track:'Ben',start_time:'09:00:00',location:'Garden room'},
+    {id:'maya-prep',title:'Maya gets ready',track:'Maya',start_time:'09:00:00',location:'Bridal suite'},
+    {id:'ceremony',title:'Our ceremony',track:'Together',start_time:'11:00:00',end_time:'11:30:00',location:'The garden'},
+  ].map(i=>({wedding_id:w,day_offset:0,end_time:null,notes:'',vendor_id:null,deleted:false,version:1,...i}));
   fixture.wedding.pinterest_board_url='';
   fixture.vendors[0].rating=4;fixture.vendors[0].vendor_kind='vendor';
   fixture.payments[0].version=1;
@@ -55,7 +60,7 @@ export function installMock() {
     if(path.startsWith('weddings?')&&(!options.method||options.method==='GET'))return Response.json([fixture.wedding]);
     if(path==='rpc/budget_snapshot'){
       const snapshot=structuredClone(fixture);
-      for(const key of ['categories','vendors','expenses','quotes','installments','payments','invitations','guests','tasks','events','vendor_photos'])snapshot[key]=snapshot[key].filter(r=>!r.deleted);
+      for(const key of ['categories','vendors','expenses','quotes','installments','payments','invitations','guests','tasks','events','vendor_photos','itinerary_items'])snapshot[key]=snapshot[key].filter(r=>!r.deleted);
       snapshot.installments=snapshot.installments.filter(i=>snapshot.expenses.some(e=>e.id===i.expense_id&&e.agreed_cents!==null));
       return Response.json(snapshot);
     }
@@ -70,6 +75,7 @@ export function installMock() {
           fixture.expenses.filter(e=>e.vendor_id===row.id).forEach(e=>remove('expenses',e));
           for(const t of ['quotes','vendor_photos'])fixture[t].filter(r=>r.vendor_id===row.id).forEach(r=>remove(t,r));
           fixture.events.filter(e=>e.vendor_id===row.id).forEach(e=>e.vendor_id=null);
+          fixture.itinerary_items.filter(e=>e.vendor_id===row.id).forEach(e=>e.vendor_id=null);
         }
         if(table==='expenses')for(const t of ['quotes','payments','installments'])fixture[t].filter(r=>r.expense_id===row.id).forEach(r=>remove(t,r));
         if(table==='invitations')fixture.guests.filter(g=>g.invitation_id===row.id).forEach(g=>remove('guests',g));

@@ -24,6 +24,14 @@ A private wedding planner for two people: GitHub Pages serves `docs/`; a dedicat
 
 ## Local development
 
+### Day-of itinerary — prepared, not yet deployed
+
+The new **07 · Day-of itinerary** implements the original brief's wedding-day timeline as a separate section. Activities have start/optional end times, editable track labels (Ben, Maya, Together, or custom), location, notes, and an optional vendor link. The combined plan allows parallel activities and shared milestones, supports after-midnight starts/finishes, and follows the wedding date without changing saved clock times. A track filter and print layout provide combined or individual-track copies. Entries use membership RLS, Realtime, optimistic versions, and the existing confirmed deletion/audit workflow. No sample rows are inserted into the live wedding.
+
+See [itinerary validation](ITINERARY-VALIDATION.md) for checks and the local migration. Its hosted application and frontend publication require separate approval; apply the migration first. The existing Schedule remains the planning agenda and does not duplicate itinerary rows. The branch passes 52 Node tests plus static checks, the full local SQL access chain, and local security advisors; real hosted/two-account delivery is not yet verified.
+
+### Run locally
+
 Node 22+ is sufficient. There are **no production or development package dependencies**, no install step, and no compile step.
 
 ```sh
@@ -92,7 +100,7 @@ Routine completed units of work are committed and related commits are pushed tog
 
 ## Verification performed
 
-- `node --test tests/*.test.mjs`: 47 tests passed, including existing budget/auth/planner invariants, URL/photo validation, agenda merging, binary authenticated photo requests, Pinterest script isolation, and an app wiring fixture exercising edits, unbooking, guest attribution, event creation, deletion, and chart choice through polling. The app wiring fixture uses a minimal in-memory DOM adapter; it is not a browser or layout test.
+- `node --test tests/*.test.mjs`: 52 tests passed, including existing budget/auth/planner invariants, URL/photo validation, agenda merging, binary authenticated photo requests, Pinterest script isolation, itinerary time/date/track/rendering rules, and an app wiring fixture exercising edits, unbooking, guest attribution, event/itinerary creation and deletion, and chart choice through polling. The app wiring fixture uses a minimal in-memory DOM adapter; it is not a browser or layout test.
 - `node scripts/check.mjs`: syntax, entry assets, and relative asset checks passed. There is no separate lint/typecheck/build toolchain configured.
 - Migration applied successfully to isolated **PostgreSQL 16.4** with test-only Auth stubs. [tests/access.sql](tests/access.sql) passed: two-member reads, outsider isolation across every table, signed-out denial, administrative memberships, same-wedding/expense references, immutable ledger, actor checks, retry deduplication, atomic purchase rollback, version conflicts, preserved quotes, and amendment history.
 - Supabase CLI v3.1.0 security advisors against that local test database: **No issues found**.

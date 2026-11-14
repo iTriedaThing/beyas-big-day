@@ -5,6 +5,7 @@ import {escapeHTML as esc,button as btn,input,textarea as area,select} from './u
 import {TASK_WINDOWS,DIETARY_FLAGS,GUEST_TAGS,STARTER_TASKS,householdGuests,guestSummary} from './planner.js';
 import {renderGuests,renderPlanning,plannerOverview,displayDate} from './planner-views.js';
 import {websiteLink,timeZones,countdown,attributionOptions,renderSchedule,renderMoodboard,pinterestBoard,validatePhoto} from './features.js';
+import {renderItinerary,itineraryTracks,itineraryRecord} from './itinerary.js';
 
 const $ = s => document.querySelector(s);
 const initialAuthRedirect = takeAuthRedirect(window.location, window.history);
@@ -13,7 +14,7 @@ const dialog = $('#editor');
 let api, data, totals, weddingId, tab = 'budget', selectedExpense = '', selectedCategory = '', stopLive, loading = false, loadAgain = false, syncStatus = 'Connecting…', noticeTimer;
 let sessionEpoch = 0, handlingAuthRedirect = false;
 const guestFilters = {search:'',rsvp:'',tag:'',view:'active'};
-let taskFilter = 'all', comparison = 'paid', scheduleFilter = 'upcoming';
+let taskFilter = 'all', comparison = 'paid', scheduleFilter = 'upcoming', itineraryTrack='';
 const photoURLs = new Map();
 const photoLoads = new Map();
 const fmt = value => money(value, data.wedding.currency);
@@ -30,6 +31,7 @@ function errorMessage(error) {
   return `${error.message}${api?.pending ? ' The outcome is unconfirmed. Retry the original save; its IDs are preserved in this tab.' : ''}`;
 }
 function resetPrivateUI() {
+  document.body.classList.toggle('printing-itinerary',false);
   for(const url of photoURLs.values()) URL.revokeObjectURL(url);photoURLs.clear();photoLoads.clear();
   sessionEpoch++; stopLive?.(); stopLive = null; data = null; weddingId = null;
   if (dialog.open) dialog.close();
@@ -119,7 +121,7 @@ function renderAccount() {
 function connectLive() {
   stopLive?.();
   if (!weddingId || !api.session) return;
-  stopLive = subscribe(api, weddingId, () => reload(), status => { syncStatus = status; if ($('#sync')) $('#sync').textContent = status; },!!data?.planner_ready,!!data?.feedback_ready);
+  stopLive = subscribe(api, weddingId, () => reload(), status => { syncStatus = status; if ($('#sync')) $('#sync').textContent = status; },!!data?.planner_ready,!!data?.feedback_ready,!!data?.itinerary_ready);
 }
 async function reload() {
   if (loading) { loadAgain = true; return; }
@@ -129,11 +131,12 @@ async function reload() {
     const snapshot = await api.snapshot(weddingId);
     if (epoch !== sessionEpoch) return;
     if (!snapshot.wedding) { resetPrivateUI(); $('#main').innerHTML = '<h1>Wedding access removed</h1><p>Contact your administrator.</p>'; renderAccount(); return; }
-    const previousReady = data?.planner_ready, previousFeedback=data?.feedback_ready;
-    data = {...snapshot,invitations:snapshot.invitations||[],guests:snapshot.guests||[],tasks:snapshot.tasks||[],events:snapshot.events||[],vendor_photos:snapshot.vendor_photos||[]};
+    const previousReady = data?.planner_ready, previousFeedback=data?.feedback_ready,previousItinerary=data?.itinerary_ready;
+    data = {...snapshot,invitations:snapshot.invitations||[],guests:snapshot.guests||[],tasks:snapshot.tasks||[],events:snapshot.events||[],vendor_photos:snapshot.vendor_photos||[],itinerary_items:snapshot.itinerary_items||[]};
     if(selectedCategory&&!data.categories.some(c=>c.id===selectedCategory))selectedCategory='';
+    if(itineraryTrack&&!itineraryTracks(data).includes(itineraryTrack))itineraryTrack='';
     totals = summarize(data); render();
-    if (stopLive && (previousReady !== data.planner_ready||previousFeedback!==data.feedback_ready)) connectLive();
+    if (stopLive && (previousReady !== data.planner_ready||previousFeedback!==data.feedback_ready||previousItinerary!==data.itinerary_ready)) connectLive();
   } catch (error) {
     if (epoch !== sessionEpoch) return;
     if (!api.session) { resetPrivateUI(); renderLogin('Session expired. Sign in again.'); }
@@ -142,13 +145,14 @@ async function reload() {
   } finally { loading = false; if (loadAgain) { loadAgain = false; void reload(); } }
 }
 function render() {
+  document.body.classList.toggle('printing-itinerary',tab==='itinerary');
   const previousBoard=document.querySelector('.moodboard-frame');
   renderAccount();
-  const primary=tab==='schedule'?btn('event-new','+ Add event','',''):tab==='moodboard'?btn('moodboard-edit','Link Pinterest board'):tab==='guests'?btn('household-new','+ Add household','',''):tab==='planning'?btn('task-new','+ Add task','',''):btn('expense-new','+ Add expense','','')+btn('payment-new','Record payment');
+  const primary=tab==='itinerary'?(data.itinerary_ready?btn('itinerary-new','+ Add activity','',''):''):tab==='schedule'?btn('event-new','+ Add event','',''):tab==='moodboard'?btn('moodboard-edit','Link Pinterest board'):tab==='guests'?btn('household-new','+ Add household','',''):tab==='planning'?btn('task-new','+ Add task','',''):btn('expense-new','+ Add expense','','')+btn('payment-new','Record payment');
   $('#main').innerHTML = `<section class="intro"><div><p class="eyebrow">BEN + MAYA · A DAY THAT’S OURS</p><h1>${esc(data.wedding.name)}</h1><p class="intro-note">A little planning. A lot of love.</p>${countdown(data.wedding.wedding_date,today())}<p class="wedding-meta">${data.wedding.wedding_date?esc(displayDate(data.wedding.wedding_date)):'Our date is still a beautiful possibility'}<span>·</span>${esc(data.wedding.currency)}</p></div><div class="actions">${primary}</div></section>
     <div class="section-head utility-bar"><small id="sync" class="sync-status">${esc(syncStatus)}</small><div class="actions">${api.pending?btn('retry','Retry pending save'):''}${btn('refresh','Refresh')}${btn('settings','Wedding settings')}${btn('export','Budget CSVs')}</div></div>
-    <nav class="planner-nav" aria-label="Planner sections">${[['budget','Budget','01'],['vendors','Vendors & quotes','02'],['guests','Guest list','03'],['planning','Our checklist','04'],['schedule','Schedule','05'],['moodboard','Mood board','06']].map(([id,label,number])=>`<button type="button" data-action="tab-${id}" class="secondary" aria-pressed="${tab===id}"><span aria-hidden="true">${number}</span>${label}</button>`).join('')}</nav>
-    ${tab==='budget'?renderBudget():tab==='vendors'?renderVendors():tab==='guests'?renderGuests(data,guestFilters):tab==='planning'?renderPlanning(data,taskFilter,today()):tab==='schedule'?renderSchedule(data,today(),scheduleFilter):renderMoodboard(data)}`;
+    <nav class="planner-nav" aria-label="Planner sections">${[['budget','Budget','01'],['vendors','Vendors & quotes','02'],['guests','Guest list','03'],['planning','Our checklist','04'],['schedule','Schedule','05'],['moodboard','Mood board','06'],['itinerary','Day-of itinerary','07']].map(([id,label,number])=>`<button type="button" data-action="tab-${id}" class="secondary" aria-pressed="${tab===id}"><span aria-hidden="true">${number}</span>${label}</button>`).join('')}</nav>
+    ${tab==='budget'?renderBudget():tab==='vendors'?renderVendors():tab==='guests'?renderGuests(data,guestFilters):tab==='planning'?renderPlanning(data,taskFilter,today()):tab==='schedule'?renderSchedule(data,today(),scheduleFilter):tab==='itinerary'?renderItinerary(data,itineraryTrack):renderMoodboard(data)}`;
   const nextBoard=document.querySelector('.moodboard-frame');
   if(previousBoard&&nextBoard&&previousBoard.getAttribute('src')===nextBoard.getAttribute('src'))nextBoard.replaceWith(previousBoard);
   void loadPhotos();
@@ -437,14 +441,14 @@ function deleteForm(table,id) {
   const label=record.title||record.name||record.household_name||record.package_name||record.label||record.caption||table.replaceAll('_',' ');
   const messages={
     categories:'This also deletes every expense in this category, their quotes, installments, and payment/refund records from active totals.',
-    vendors:'This also deletes expenses linked to this vendor, their payments and schedules, all offers from this vendor, and attached pictures. Scheduled visits remain, without the vendor link.',
+    vendors:'This also deletes expenses linked to this vendor, their payments and schedules, all offers from this vendor, and attached pictures. Scheduled visits and day-of activities remain, without the vendor link.',
     expenses:'This also deletes its quotes, installments, and payments/refunds from active totals.',
     invitations:'This also deletes every guest in this household and removes their seats and replies from counts.',
     installments:'Its payments remain recorded but become unallocated. This does not change the expense agreement.',
     quotes:'If this is preferred, forecast returns to the budgeted amount. Unbook an agreement before deleting its booked quote.',
     payments:'This removes the transaction from balances and may reopen or reduce an amount owed. It does not refund or transfer money.',
     guests:'This removes this person from active seat, RSVP, and dietary counts.',
-    tasks:'This removes this task from checklist progress and the schedule.',events:'This removes the event from the schedule.',vendor_photos:'This removes the picture from the vendor gallery.'
+    tasks:'This removes this task from checklist progress and the schedule.',events:'This removes the event from the schedule.',vendor_photos:'This removes the picture from the vendor gallery.',itinerary_items:'This removes the activity from the day-of itinerary and its printable copy.'
   };
   openForm(`Delete ${label}`,`<p class="warning">${esc(messages[table])}</p><p>This removes it from the planner and exports. Private history is retained for accountability. There is no restore button for deleted records.</p>`+input('confirm','Type DELETE to confirm','','text','required autocomplete="off"'),f=>{
     if(f.confirm!=='DELETE')throw new Error('Type DELETE to confirm.');
@@ -465,6 +469,22 @@ function eventForm(id,vendorId='') {
     +checkbox('completed','Completed',e?.completed)+area('notes','Notes',e?.notes||''),f=>{
       const record={...f,title:f.title.trim(),vendor_id:f.vendor_id||null,start_time:f.start_time||null,completed:f.completed==='on'};
       return e?update('events',e,record):insert('events',record);
+    });
+}
+function itineraryForm(id) {
+  if(!data.itinerary_ready)throw new Error('The day-of itinerary is being prepared. Your existing planner is ready to use.');
+  const item=data.itinerary_items.find(i=>i.id===id);
+  openForm(item?'Edit day-of activity':'Add a day-of activity',input('title','Activity',item?.title||'','text','required maxlength="160"')
+    +select('day_offset','Day',[['0','Wedding day'],['1','Following day (after midnight)']],String(item?.day_offset||0))
+    +input('start_time','Start time',item?.start_time?.slice(0,5)||'','time','required')+input('end_time','End time (optional)',item?.end_time?.slice(0,5)||'','time')
+    +'<p class="muted">Times follow the wedding time zone. An end time earlier than the start means the activity ends the next day.</p>'
+    +input('track','Who / track',item?.track||'Together','text','required maxlength="100" list="itinerary-tracks"')
+    +`<datalist id="itinerary-tracks">${itineraryTracks(data).map(t=>`<option value="${esc(t)}"></option>`).join('')}</datalist>`
+    +'<p class="muted">Use Ben, Maya, Together, or a custom label such as Wedding party. Parallel activities may share a time.</p>'
+    +input('location','Location',item?.location||'','text','maxlength="500"')
+    +select('vendor_id','Vendor / venue (optional)',[['','No vendor linked'],...opts(data.vendors)],item?.vendor_id||'')
+    +area('notes','Notes',item?.notes||''),f=>{
+      const record=itineraryRecord(f);return item?update('itinerary_items',item,record):insert('itinerary_items',record);
     });
 }
 function moodboardForm() {
@@ -505,11 +525,13 @@ function exportCSVs() {
   notify('Exported expense and payment CSVs. Allow multiple downloads if your browser asks. Amounts are integer cents.');
 }
 const actions = {
+  'tab-itinerary':()=>{tab='itinerary';render();},'itinerary-new':()=>itineraryForm(),'itinerary-edit':itineraryForm,
+  'itinerary-print':()=>window.print(),
   'tab-schedule':()=>{tab='schedule';render();},'tab-moodboard':()=>{tab='moodboard';render();},
   'unbook':unbookForm,'payment-edit':id=>paymentForm('','',id),'payment-history':paymentHistory,
   'event-new':()=>eventForm(),'event-edit':eventForm,'event-vendor':id=>eventForm('',id),
   'moodboard-edit':moodboardForm,'moodboard-refresh':()=>{const frame=document.querySelector('.moodboard-frame');if(frame)frame.src=frame.getAttribute('src');},'photo-new':photoForm,
-  ...Object.fromEntries([['expense','expenses'],['vendor','vendors'],['category','categories'],['household','invitations'],['guest','guests'],['task','tasks'],['quote','quotes'],['installment','installments'],['payment','payments'],['event','events'],['photo','vendor_photos']].map(([action,table])=>[`${action}-delete`,id=>deleteForm(table,id)])),
+  ...Object.fromEntries([['expense','expenses'],['vendor','vendors'],['category','categories'],['household','invitations'],['guest','guests'],['task','tasks'],['quote','quotes'],['installment','installments'],['payment','payments'],['event','events'],['photo','vendor_photos'],['itinerary','itinerary_items']].map(([action,table])=>[`${action}-delete`,id=>deleteForm(table,id)])),
   'tab-guests':()=>{tab='guests';render();},'tab-planning':()=>{tab='planning';render();},
   'household-new':()=>householdForm(),'household-edit':householdForm,
   'household-archive':id=>changePlannerRecord('invitations',id,{archived:!data.invitations.find(i=>i.id===id).archived}),
@@ -547,6 +569,7 @@ document.addEventListener('click', async event => {
 document.addEventListener('change',event => {
   if(event.target.id==='comparison'){comparison=event.target.value;$('#bars').innerHTML=bars(comparison);}
   if(event.target.id==='f-schedule-filter'){scheduleFilter=event.target.value;render();}
+  if(event.target.id==='f-itinerary-track'){itineraryTrack=event.target.value;render();}
   if(event.target.id==='f-category-filter'){selectedCategory=event.target.value;render();}
   const guestSelects={'f-guest-rsvp':'rsvp','f-guest-tag':'tag','f-guest-view':'view'};
   if(guestSelects[event.target.id]){guestFilters[guestSelects[event.target.id]]=event.target.value;render();}
