@@ -20,7 +20,7 @@ test('feedback flows render and save through the app; Forecast survives polling 
   const el=id=>{if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);};
   const storage=new Map();
   Object.assign(globalThis,{
-    document:{hidden:false,querySelector:s=>s.startsWith('#')?el(s.slice(1)):null,addEventListener:(name,handler)=>listeners.set(name,handler)},
+    document:{hidden:false,body:{classList:{toggle(){}}},querySelector:s=>s.startsWith('#')?el(s.slice(1)):null,addEventListener:(name,handler)=>listeners.set(name,handler)},
     window:{location:new URL('http://localhost/'),history:{replaceState(){}},addEventListener(){}},
     sessionStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     FormData:class extends Map{constructor(form){super(Object.entries(form.values||{}));}},
@@ -59,6 +59,14 @@ test('feedback flows render and save through the app; Forecast survives polling 
   assert.match(el('main').innerHTML,/Cake tasting/);assert.match(el('main').innerHTML,/14:30/);
   await click('tab-moodboard');await click('moodboard-edit');await submit({url:'https://www.pinterest.com/example/wedding/'});
   assert.match(el('main').innerHTML,/<iframe class="moodboard-frame"/);
+  await click('tab-itinerary');assert.match(el('main').innerHTML,/Day-of itinerary/);assert.match(el('main').innerHTML,/Ben gets ready/);assert.match(el('main').innerHTML,/Maya gets ready/);
+  await click('itinerary-new');await submit({title:'Shared first look',track:'Wedding party',start_time:'10:30',end_time:'11:00',day_offset:'0',location:'Courtyard',vendor_id:'',notes:'Bring flowers'});
+  listeners.get('change')({target:{id:'f-itinerary-track',value:'Wedding party'}});
+  assert.match(el('main').innerHTML,/Shared first look/);assert.ok(!el('main').innerHTML.includes('Maya gets ready'));
+  const itineraryId=el('main').innerHTML.match(/data-action="itinerary-edit" data-id="([^"]+)"/)[1];
+  await click('itinerary-edit',itineraryId);await submit({title:'Updated first look',track:'Wedding party',start_time:'10:15',end_time:'11:00',day_offset:'0',location:'Courtyard',vendor_id:'',notes:'Bring flowers'});
+  assert.match(el('main').innerHTML,/Updated first look/);
+  await click('itinerary-delete',itineraryId);await submit({confirm:'DELETE'});assert.ok(!el('main').innerHTML.includes('Updated first look'));assert.match(el('main').innerHTML,/Maya gets ready/);
   await click('tab-budget');await click('expense-delete','catering');assert.match(el('fields').innerHTML,/quotes, installments, and payments/);
   await submit({confirm:'DELETE'});assert.ok(!el('main').innerHTML.includes('Corrected deposit'));
 });

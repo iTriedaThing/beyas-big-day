@@ -86,3 +86,17 @@ footer{text-align:center;font:italic 17px Georgia,serif;color:var(--plum);paddin
 @media(max-width:700px){.planner-nav button{flex-basis:28%}.planning-glance{grid-template-columns:1fr}.agenda-row{grid-template-columns:95px 1fr;gap:12px}.agenda-row .actions{grid-column:2}.intro-countdown{font-size:16px}.moodboard-frame{height:520px}}
 @media(min-width:701px) and (max-width:1050px){.cards{grid-template-columns:1fr 1fr}}
 .card .amount{overflow-wrap:anywhere}
+.itinerary-list{list-style:none;padding:0;margin:0}.itinerary-item{display:grid;grid-template-columns:140px minmax(0,1fr) auto;gap:20px;padding:24px 0;border-top:1px solid var(--line);align-items:start}.itinerary-time time{font:24px Georgia,serif;color:var(--purple)}.itinerary-time small{display:block;margin-top:6px}.itinerary-copy h4{font:22px Georgia,serif;margin:10px 0;overflow-wrap:anywhere}.itinerary-copy p{margin:8px 0;overflow-wrap:anywhere}.itinerary-copy .badge{max-width:100%;overflow-wrap:anywhere}.itinerary-day{margin-top:30px}.itinerary-print-meta{display:none}
+@media(max-width:700px){.itinerary-item{grid-template-columns:90px minmax(0,1fr);gap:12px}.itinerary-item>.actions{grid-column:2}.itinerary-time time{font-size:19px}.itinerary-copy h4{font-size:20px}.itinerary-time small{font-size:11px}}
+@media print{
+  @page{margin:16mm}
+  body.printing-itinerary{background:white;color:black;font-size:11pt}
+  body.printing-itinerary::before,body.printing-itinerary>header,body.printing-itinerary>footer,body.printing-itinerary>#notice,body.printing-itinerary>dialog,
+  body.printing-itinerary main>.intro,body.printing-itinerary main>.utility-bar,body.printing-itinerary main>.planner-nav,body.printing-itinerary .itinerary-controls{display:none!important}
+  body.printing-itinerary main{max-width:none;padding:0;margin:0}
+  .printing-itinerary .itinerary-print-meta{display:block}.printing-itinerary .itinerary-heading{margin:0 0 20px}.printing-itinerary .itinerary-heading>.actions{display:none}
+  .printing-itinerary .itinerary-panel{border:0;background:white;box-shadow:none;margin:0;padding:0}
+  .printing-itinerary .itinerary-item{grid-template-columns:120px minmax(0,1fr);break-inside:avoid;gap:16px;padding:16px 0}
+  .printing-itinerary .itinerary-day>h3{break-after:avoid}.printing-itinerary .itinerary-time time{color:black;font-size:16pt}
+  .printing-itinerary .badge{color:black;background:white;border:1px solid #aaa}.printing-itinerary .itinerary-copy h4{font-size:15pt}
+}
