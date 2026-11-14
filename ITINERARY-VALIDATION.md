@@ -38,16 +38,18 @@ The automated Print itinerary click entered the blocking native print flow and t
 - [ ] Print All tracks, then a single track. Review page breaks, dates, rooms and notes in print preview. Account email/navigation/edit buttons should not print. Cancel unless a physical print/save is wanted.
 - [ ] In an approved hosted environment, use two accounts to verify updates and stale-edit protection. Confirm unrelated users cannot read or mutate itinerary data and run `node scripts/check-public-access.mjs --itinerary` (17 signed-out checks).
 
-## Release status and required approval
+## Hosted rollout — November 14, 2026
 
-The local [day-of migration](supabase/migrations/20261114194639_day_of_itinerary.sql) has not been applied to the shared project. No live itinerary or wedding data was changed. Its additive schema has a membership-protected `itinerary_items` table, Realtime publication, the existing audit/version guards, and an additive snapshot wrapper; the previous snapshot stays as a non-exposed security-invoker helper.
+The user merged PR #6 and explicitly approved the [day-of migration](supabase/migrations/20261114202132_day_of_itinerary.sql) on `beyas-big-day` (`nennjenlgfkblsmpkzfr`). Supabase recorded version `20261114202132`; the file was renamed to match that history without changing its SQL. Do not apply it again to that project. Its additive schema has a membership-protected `itinerary_items` table, Realtime publication, the existing audit/version guards, and an additive snapshot wrapper; the previous snapshot stays as a non-exposed security-invoker helper.
 
-The reviewed migration must be applied to the explicitly approved project before publishing the frontend. Then check hosted advisors, member/outsider reads and signed-out API denial. Merge/publication requires its own authorization. Publishing first shows a preparation message and no activity-create control; `itinerary_ready` prevents unsupported writes.
+Post-rollout verification passed: both member-role snapshots return `itinerary_ready=true` and preserve `feedback_ready` and wedding access; unrelated-user reads remain isolated; RLS is enabled; anonymous SELECT and authenticated physical DELETE/TRUNCATE are denied; the snapshot helper remains security invoker; Realtime includes the itinerary table. All 17 signed-out Data API checks pass. The published `app.js` and `itinerary.js` match PR #6. Existing record counts match preflight, and no sample activities were inserted. Security advisors report only the preexisting [disabled leaked-password-protection warning](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection), with no new schema-policy warnings.
+
+The section is now available after refreshing the live app. Actual two-account browser synchronization and print/PDF pagination are not established by role-level reads and remain manual checks. For future fresh-project deployments, obtain explicit target approval, apply the migration after its dependencies, verify access/security, and publish only with release authorization. `itinerary_ready` prevents unsupported writes if a frontend is published before its migration.
 
 To repeat locally on a **fresh disposable database**, run the setup/access chain documented in FEEDBACK-VALIDATION.md, then:
 
 ```sh
-psql -v ON_ERROR_STOP=1 -d YOUR_DISPOSABLE_DATABASE -f supabase/migrations/20261114194639_day_of_itinerary.sql -f tests/itinerary-access.sql
+psql -v ON_ERROR_STOP=1 -d YOUR_DISPOSABLE_DATABASE -f supabase/migrations/20261114202132_day_of_itinerary.sql -f tests/itinerary-access.sql
 ```
 
 Never run test Auth/Storage bootstrap files against hosted Supabase.
