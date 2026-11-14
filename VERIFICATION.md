@@ -1,6 +1,6 @@
 # Verify with two accounts before real data
 
-For the couple-feedback release, also follow [FEEDBACK-VALIDATION.md](FEEDBACK-VALIDATION.md). After that migration, direct payment/refund edits with immutable private history, explicit unbooking, and confirmed deletion replace the older append-only/no-unbooking behavior described below. The original SQL suites still run before that migration; the new feedback suite checks the replacement rules. Hosted rollout is pending separate authorization.
+For the couple-feedback release, also follow [FEEDBACK-VALIDATION.md](FEEDBACK-VALIDATION.md). The user-approved migration was applied on November 14, 2026, after PR #4 was merged. Direct payment/refund edits with immutable private history, explicit unbooking, and confirmed deletion replace the older append-only/no-unbooking behavior described below. The original SQL suites still run before that migration; the new feedback suite checks the replacement rules. Hosted role/access checks pass; actual photo upload/download and two-account browser behavior remain separate acceptance checks.
 
 Use the same test wedding and two separately provisioned Auth accounts. Do not share a password. Setup and publishing instructions are in [README.md](README.md).
 
