@@ -24,11 +24,13 @@ A private wedding planner for two people: GitHub Pages serves `docs/`; a dedicat
 
 ## Local development
 
-### Day-of itinerary — prepared, not yet deployed
+### Day-of itinerary — deployed November 14, 2026
 
 The new **07 · Day-of itinerary** implements the original brief's wedding-day timeline as a separate section. Activities have start/optional end times, editable track labels (Ben, Maya, Together, or custom), location, notes, and an optional vendor link. The combined plan allows parallel activities and shared milestones, supports after-midnight starts/finishes, and follows the wedding date without changing saved clock times. A track filter and print layout provide combined or individual-track copies. Entries use membership RLS, Realtime, optimistic versions, and the existing confirmed deletion/audit workflow. No sample rows are inserted into the live wedding.
 
-See [itinerary validation](ITINERARY-VALIDATION.md) for checks and the local migration. Its hosted application and frontend publication require separate approval; apply the migration first. The existing Schedule remains the planning agenda and does not duplicate itinerary rows. The branch passes 52 Node tests plus static checks, the full local SQL access chain, and local security advisors; real hosted/two-account delivery is not yet verified.
+See [itinerary validation](ITINERARY-VALIDATION.md) for checks and rollout details. PR #6 is published, and the separately approved migration was applied to `beyas-big-day` as version `20261114202132`. The SQL file was renamed to match hosted history without changing its content; do not apply it again there. Both member-role snapshots enable `itinerary_ready`, the existing snapshot contract remains available, RLS and Realtime are enabled, outsider reads are isolated, and all 17 signed-out API checks pass. Existing record counts are unchanged; the live itinerary starts empty. Security advisors report only the preexisting disabled leaked-password-protection warning.
+
+The existing Schedule remains the planning agenda and does not duplicate itinerary rows. Local validation includes 52 Node tests, static checks, the full SQL access chain and security advisors. Actual two-account browser delivery and print/PDF pagination remain separate checks. Future shared migrations and publication still require explicit approval.
 
 ### Run locally
 
