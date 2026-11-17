@@ -2,7 +2,7 @@
 
 Beya is Ben + Maya’s couple name. The individual partners are Ben and Maya.
 
-A private wedding planner for two people: GitHub Pages serves `docs/`; a dedicated Supabase project provides Auth, Postgres, RLS, Realtime, and private photo Storage. The shared budget, partner-entered guest list/RSVPs, and date-based checklist from [the build brief](wedding-planner-build-brief.md) are implemented. The couple's reviewed feedback includes a unified dated agenda and Pinterest board preview. Menus, visual seating, guest-entered replies, and a month-grid calendar remain later releases. PR #4 is published, and the approved feedback migration was applied on November 14, 2026; see [feedback acceptance](FEEDBACK-VALIDATION.md).
+A private wedding planner for two people: GitHub Pages serves `docs/`; a dedicated Supabase project provides Auth, Postgres, RLS, Realtime, and private photo Storage. The shared budget, partner-entered guest list/RSVPs, and date-based checklist from [the build brief](wedding-planner-build-brief.md) are implemented. The couple's reviewed feedback includes a unified dated agenda and Pinterest board preview. Interactive menu planning is implemented on this branch and awaits its approved hosted migration and release; see [menu acceptance](MENU-VALIDATION.md). Visual seating, guest-entered replies, and a month-grid calendar remain later releases. PR #4 is published, and the approved feedback migration was applied on November 14, 2026; see [feedback acceptance](FEEDBACK-VALIDATION.md).
 
 ## What ships
 
@@ -23,6 +23,12 @@ A private wedding planner for two people: GitHub Pages serves `docs/`; a dedicat
 - Version-filtered edits detect simultaneous changes. Payment UUIDs and unconfirmed save payloads survive reloads in the same tab. Realtime refetches, a 20-second foreground polling fallback, and focus/online refresh keep two open screens current.
 
 ## Local development
+
+### Interactive menu — prepared November 17, 2026
+
+**08 · Our menu** adds courses, selectable dish/photo cards, vendor links/grouping, ratings, and fixed, shared per-person, confirmed-choice, or planned-quantity pricing. Active attending guests can receive a meal per course from the guest list or menu. The table-sorted caterer manifest keeps meal choices, dietary requests and caterer confirmation separate, with dish counts, missing-choice review, CSV export and print styles. One linked expense supplies the budget forecast without duplicating catering; booked agreements and payments remain unchanged. See [pricing rules, verification and rollout](MENU-VALIDATION.md).
+
+The additive `20261117132928_interactive_menu_planning.sql` migration adds three membership-protected tables, the private `menu-photos` bucket, optional guest table labels and one catering expense link. It is **not applied to the hosted project**. The new frontend shows a preparation message until that migration is approved and applied. No sample rows are inserted. Hosted migration application, merge and publication require their applicable approvals.
 
 ### Day-of itinerary — deployed November 14, 2026
 

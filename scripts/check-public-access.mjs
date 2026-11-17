@@ -6,9 +6,11 @@ assert.match(config.supabaseUrl, /^https:\/\/[a-z0-9-]+\.supabase\.co$/);
 assert.ok(config.publishableKey.startsWith('sb_publishable_'), 'Configure the publishable key first');
 const tables = ['weddings', 'wedding_members', 'categories', 'vendors', 'expenses',
   'quotes', 'installments', 'payments', 'contract_amendments'];
+if(process.argv.includes('--menu'))process.argv.push('--itinerary');
 if (process.argv.includes('--planner')||process.argv.includes('--feedback')||process.argv.includes('--itinerary')) tables.push('invitations','guests','tasks');
 if (process.argv.includes('--feedback')||process.argv.includes('--itinerary')) tables.push('events','vendor_photos','record_history');
 if (process.argv.includes('--itinerary')) tables.push('itinerary_items');
+if (process.argv.includes('--menu')) tables.push('menu_courses','menu_options','guest_meals');
 const checks = tables.map(table => ({ label: table, path: `${table}?select=*&limit=1` }));
 checks.push({ label: 'budget_snapshot RPC', path: 'rpc/budget_snapshot', method: 'POST',
   body: { w: '00000000-0000-0000-0000-000000000000' } });
