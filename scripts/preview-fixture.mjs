@@ -8,7 +8,7 @@ http.createServer(async(req,res)=>{
   try{
     let source,type='text/javascript; charset=utf-8';
     if(pathname==='/config.js')source="export const config={supabaseUrl:'https://fixture.supabase.co',publishableKey:'sb_publishable_fixture'};";
-    else if(pathname==='/fixture.js')source=await readFile('tests/fixture.js');
+    else if(pathname==='/fixture.js')source=(await readFile('tests/fixture.js','utf8')).replace("'../docs/menu.js'","'./menu.js'");
     else {
       const file=path.resolve(root,'.'+decodeURIComponent(pathname==='/'?'/index.html':pathname));
       if(!file.startsWith(root+path.sep))throw new Error('outside root');

@@ -25,6 +25,19 @@ test('photo requests refresh expired authorization once and report Storage failu
   const failed=new Api(config,storage(),async()=>Response.json({message:'Not allowed'},{status:403}));failed.setSession(session);
   await assert.rejects(failed.photo('w/v/image.png'),/Not allowed/);
 });
+
+test('menu photo bucket is retained through auth refresh and rejects arbitrary buckets',async()=>{
+  const paths=[];let first=true;
+  const api=new Api(config,storage(),async url=>{
+    paths.push(url);
+    if(url.includes('/auth/'))return Response.json({...session,expires_in:3600});
+    if(first){first=false;return Response.json({message:'expired'},{status:401});}
+    return new Response(new Blob(['menu-image']));
+  });api.setSession(session);
+  assert.equal(await(await api.photo('w/d/photo.jpg',{bucket:'menu-photos'})).text(),'menu-image');
+  assert.ok(paths.filter(p=>p.includes('/storage/')).every(p=>p.includes('/menu-photos/')));
+  await assert.rejects(api.photo('w/d/photo.jpg',{bucket:'public-files'}),/Unsupported/);
+});
 test('default fetch preserves the browser global receiver for auth and data requests',async t=>{
   const requests=[];
   t.mock.method(globalThis,'fetch',async function(url){

@@ -1,4 +1,5 @@
 // In-memory browser fixture. Imported only by scripts/preview-fixture.mjs.
+import {menuEstimate} from '../docs/menu.js';
 export function installMock() {
   const w = '10000000-0000-0000-0000-000000000001', a = '00000000-0000-0000-0000-000000000001', b = '00000000-0000-0000-0000-000000000002';
   const fixture = {
@@ -12,6 +13,15 @@ export function installMock() {
     payments:[{id:'p1',wedding_id:w,expense_id:'catering',installment_id:'deposit',kind:'payment',amount_cents:90000,paid_on:'2026-11-13',payer_id:a,entered_by:b,notes:'Booking deposit',created_at:'2026-11-13T12:00:00Z'}],amendments:[],
   };
   fixture.planner_ready=true;fixture.feedback_ready=true;fixture.itinerary_ready=true;
+  fixture.menu_ready=true;fixture.menu_courses=[
+    {id:'main',wedding_id:w,name:'Mains',sort_order:1,choices_offered:true,version:1},
+    {id:'drinks',wedding_id:w,name:'Drinks',sort_order:2,choices_offered:false,version:1}];
+  fixture.menu_options=[
+    {id:'tart',course_id:'main',name:'Garden vegetable tart',pricing_basis:'per_choice',unit_cents:2500,selected:true,vendor_id:'vendor',rating:5},
+    {id:'fish',course_id:'main',name:'Lemon roast fish',pricing_basis:'per_choice',unit_cents:3000,selected:true,vendor_id:'vendor',rating:4},
+    {id:'drinks-package',course_id:'drinks',name:'Garden drinks package',pricing_basis:'per_person',unit_cents:1000,selected:false,vendor_id:'vendor'}
+  ].map(o=>({wedding_id:w,quantity:1,unit:'serving',notes:'Seasonal ingredients, served with love.',photo_path:null,deleted:false,version:1,...o}));
+  fixture.guest_meals=[{id:'alex-meal',wedding_id:w,guest_id:'alex',course_id:'main',option_id:'tart',version:1}];
   fixture.itinerary_items=[
     {id:'ben-prep',title:'Ben gets ready',track:'Ben',start_time:'09:00:00',location:'Garden room'},
     {id:'maya-prep',title:'Maya gets ready',track:'Maya',start_time:'09:00:00',location:'Bridal suite'},
@@ -46,7 +56,7 @@ export function installMock() {
   globalThis.fetch=async (url,options={})=>{
     if(!String(url).startsWith('https://fixture.supabase.co/'))return realFetch(url,options);
     if(String(url).includes('/storage/v1/object/')){
-      const path=decodeURIComponent(String(url).split('vendor-photos/')[1]);
+      const path=decodeURIComponent(String(url).split('/object/')[1].replace(/^authenticated\//,''));
       if(options.method==='POST'){files.set(path,options.body);return Response.json({Key:path});}
       return files.has(path)?new Response(files.get(path)):Response.json({message:'Missing fixture picture'},{status:404});
     }
@@ -60,7 +70,10 @@ export function installMock() {
     if(path.startsWith('weddings?')&&(!options.method||options.method==='GET'))return Response.json([fixture.wedding]);
     if(path==='rpc/budget_snapshot'){
       const snapshot=structuredClone(fixture);
-      for(const key of ['categories','vendors','expenses','quotes','installments','payments','invitations','guests','tasks','events','vendor_photos','itinerary_items'])snapshot[key]=snapshot[key].filter(r=>!r.deleted);
+      for(const key of ['categories','vendors','expenses','quotes','installments','payments','invitations','guests','tasks','events','vendor_photos','itinerary_items','menu_courses','menu_options','guest_meals'])snapshot[key]=snapshot[key].filter(r=>!r.deleted);
+      snapshot.menu_options=snapshot.menu_options.filter(o=>snapshot.menu_courses.some(c=>c.id===o.course_id));
+      snapshot.menu_estimate=menuEstimate(snapshot);
+      snapshot.expenses=snapshot.expenses.map(e=>e.id===snapshot.wedding.menu_expense_id?{...e,menu_linked:true,menu_estimate_cents:snapshot.menu_estimate.cents}:e);
       snapshot.installments=snapshot.installments.filter(i=>snapshot.expenses.some(e=>e.id===i.expense_id&&e.agreed_cents!==null));
       return Response.json(snapshot);
     }
@@ -76,11 +89,14 @@ export function installMock() {
           for(const t of ['quotes','vendor_photos'])fixture[t].filter(r=>r.vendor_id===row.id).forEach(r=>remove(t,r));
           fixture.events.filter(e=>e.vendor_id===row.id).forEach(e=>e.vendor_id=null);
           fixture.itinerary_items.filter(e=>e.vendor_id===row.id).forEach(e=>e.vendor_id=null);
+          fixture.menu_options.filter(e=>e.vendor_id===row.id).forEach(e=>e.vendor_id=null);
         }
         if(table==='expenses')for(const t of ['quotes','payments','installments'])fixture[t].filter(r=>r.expense_id===row.id).forEach(r=>remove(t,r));
         if(table==='invitations')fixture.guests.filter(g=>g.invitation_id===row.id).forEach(g=>remove('guests',g));
         if(table==='installments')fixture.payments.filter(p=>p.installment_id===row.id).forEach(p=>p.installment_id=null);
         if(table==='quotes')fixture.expenses.filter(e=>e.preferred_quote_id===row.id).forEach(e=>e.preferred_quote_id=null);
+        if(table==='expenses'&&fixture.wedding.menu_expense_id===row.id)fixture.wedding.menu_expense_id=null;
+        if(table==='menu_courses')fixture.menu_options.filter(o=>o.course_id===row.id).forEach(o=>remove('menu_options',o));
       };
       remove(body.t,record);return Response.json(null);
     }

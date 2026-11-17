@@ -100,3 +100,14 @@ footer{text-align:center;font:italic 17px Georgia,serif;color:var(--plum);paddin
   .printing-itinerary .itinerary-day>h3{break-after:avoid}.printing-itinerary .itinerary-time time{color:black;font-size:16pt}
   .printing-itinerary .badge{color:black;background:white;border:1px solid #aaa}.printing-itinerary .itinerary-copy h4{font-size:15pt}
 }
+.menu-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:20px}.dish-card{border:1px solid var(--line);border-radius:18px;overflow:hidden;min-width:0;background:var(--cream,#faf8f3)}.dish-selected{border:2px solid var(--green,#314641)}.dish-card>img,.dish-placeholder{width:100%;height:180px;object-fit:cover;background:linear-gradient(125deg,#e9e0ed,#dce7de);display:grid;place-items:center;font:48px Georgia,serif;color:#715c83}.dish-copy{padding:20px}.dish-copy h4{font:26px Georgia,serif;margin:12px 0;overflow-wrap:anywhere}.dish-copy p{overflow-wrap:anywhere}.menu-counts{display:flex;flex-wrap:wrap;gap:10px;margin:20px 0}.menu-metrics strong{display:block;font:30px Georgia,serif;overflow-wrap:anywhere;margin:8px 0}.menu-metrics .card{min-width:0}.menu-metrics small{display:block}.table-scroll{overflow-x:auto}.meal-table{min-width:700px}.meal-table td{vertical-align:top;white-space:normal;max-width:250px;overflow-wrap:anywhere}.meal-table .actions{display:flex;flex-wrap:wrap}.menu-budget p{max-width:90ch}
+@media print{
+  body.printing-menu{background:white;color:black;font-size:10pt}
+  .printing-menu>header,.printing-menu>footer,.printing-menu>#notice,.printing-menu>dialog,.printing-menu::before,.printing-menu main>:not(.menu-manifest){display:none!important}
+  .printing-menu main{max-width:none;margin:0;padding:0}.printing-menu .menu-manifest{border:0;box-shadow:none;background:white;padding:0}
+  .printing-menu .menu-manifest button,.printing-menu .menu-manifest details{display:none!important}
+  .printing-menu .table-scroll{overflow:visible}.printing-menu .meal-table{min-width:0;width:100%;table-layout:fixed;font-size:9pt}
+  .printing-menu .meal-table th:last-child,.printing-menu .meal-table td:last-child{display:none}.printing-menu .meal-table tr{break-inside:avoid}.printing-menu .meal-table thead{display:table-header-group}
+}
+
+.menu-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:16px;align-items:end}.menu-filters label{margin-top:0}.menu-filters>div{min-width:0}

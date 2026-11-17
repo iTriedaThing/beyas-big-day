@@ -133,27 +133,29 @@ export class Api {
     }
   }
   async snapshot(wedding) { return this.request('rpc/budget_snapshot', { method: 'POST', body: { w: wedding } }); }
-  async photo(path, {file,retry=true}={}) {
+  async photo(path, {file,retry=true,bucket='vendor-photos'}={}) {
+    if(!['vendor-photos','menu-photos'].includes(bucket))throw new Error('Unsupported photo bucket.');
     if(!this.session)throw new Error('Sign in to continue.');
     if(this.session.expires_at<Date.now()/1000+60)await this.refresh();
-    const res=await this.fetcher(`${this.url}/storage/v1/object/${file?'':'authenticated/'}vendor-photos/${path.split('/').map(encodeURIComponent).join('/')}`,{
+    const res=await this.fetcher(`${this.url}/storage/v1/object/${file?'':'authenticated/'}${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`,{
       method:file?'POST':'GET',signal:AbortSignal.timeout(30000),
       headers:{apikey:this.key,Authorization:`Bearer ${this.session.access_token}`,...(file?{'Content-Type':file.type,'x-upsert':'true'}:{})},
       ...(file?{body:file}:{})
     });
-    if(res.status===401&&retry){await this.refresh();return this.photo(path,{file,retry:false});}
+    if(res.status===401&&retry){await this.refresh();return this.photo(path,{file,retry:false,bucket});}
     if(!res.ok){const error=await res.json().catch(()=>null);throw new Error(error?.message||'Photo could not be loaded or uploaded. Try again.');}
     return file?res.json():res.blob();
   }
 }
 
 // Supabase's documented Phoenix JSON protocol, with polling as a fallback.
-export function subscribe(api, wedding, onChange, onStatus, includePlanner = false, includeFeedback = false, includeItinerary = false) {
+export function subscribe(api, wedding, onChange, onStatus, includePlanner = false, includeFeedback = false, includeItinerary = false, includeMenu = false) {
   let closed = false, heartbeat, reconnect, socket, ref = 0;
   const tables = ['weddings', 'wedding_members', 'categories', 'expenses', 'vendors', 'quotes', 'payments', 'installments', 'contract_amendments'];
   if (includePlanner) tables.push('invitations', 'guests', 'tasks');
   if (includeFeedback) tables.push('events','vendor_photos');
   if (includeItinerary) tables.push('itinerary_items');
+  if (includeMenu) tables.push('menu_courses','menu_options','guest_meals');
   function connect() {
     if (closed || !api.session) return;
     ref = 0;
