@@ -121,3 +121,130 @@ Fit the website additions into that order. In step 1, add vendor contacts, prefe
 [ywm-seating]: https://yourweddingmate.com/cdn/shop/files/147.jpg?v=1765986765&width=3840
 [ywm-timeline]: https://yourweddingmate.com/cdn/shop/files/148.jpg?v=1765986765&width=3840
 [ywm-calendar]: https://yourweddingmate.com/cdn/shop/files/149.jpg?v=1765986765&width=3840
+
+
+## Development record — November 14, 2026
+
+This dated entry records implementation progress against the original brief and additions made during development. The original requirements above remain the planning history. Future progress updates should be appended as dated entries.
+
+### Evidence and release snapshot
+
+Reviewed the source and development records in **iTriedaThing/beyas-big-day**, through main commit `d4aec754a5cbb020fab21eca7576af2453c274c6`, which merged PR #6 on November 14. The app is named **Beya’s big day**, for Ben and Maya. The repository records GitHub Pages publication of the budget, guest/checklist work, and couple-feedback release. Its release source is main with the docs directory. [Repository snapshot](https://github.com/iTriedaThing/beyas-big-day/tree/d4aec754a5cbb020fab21eca7576af2453c274c6) · [App](https://itriedathing.github.io/beyas-big-day/)
+
+This review inspected code and existing validation reports. Test outcomes below are the outcomes recorded by the developers. Live signed-in behavior and current hosted database migration state were not independently exercised during this documentation update.
+
+### Functionality developed
+
+| Area | Implemented behavior | Progress against the original brief |
+| --- | --- | --- |
+| Shared access and setup | Email/password sign-in, confirmation links, password recovery, two administratively provisioned members, wedding settings, currency, date, time zone, and planning headcount. Database membership checks, edit versions, stable retry IDs, Realtime refetches, foreground polling, and focus/online refresh support shared use. | Shared foundation implemented. Real two-account acceptance remains an explicit verification item. |
+| Budget and expenses | Editable categories and budgeted amounts, planned expenses, preferred quotes, booked agreements, amendment history, forecast, paid, outstanding balances, vendor credits, category overages, and the next dated payment. Blank amounts and explicit zero have different meanings. | Step 1 budget implemented. |
+| Vendor comparisons | Vendor contacts and packages, fixed or per-person prices, saved quote headcount, inclusions, ratings, notes, preferred offers, and booking against the existing expense. Agreed prices change through amendments. | Quote comparison and booking implemented. |
+| Payments | Deposits, payments, refunds, partial installments, overdue flags, payer versus recorder attribution, and reconciliation of unallocated payments. Purchase paid in full saves an agreement and payment together. An explicit zero purchase creates an agreement without a payment. | Contract payments and everyday purchases implemented. |
+| Budget presentation and export | Budget-versus-paid bars with a Forecast option, net-payment breakdown, exact amounts, and expense/payment CSV generation. Formula-like text is escaped in exports. | Charts and export code implemented. Actual delivery of the second budget CSV still needs verification. |
+| Guests and households | Household contacts and addresses, separate mailing dates, named guests and unnamed companions, partner-entered yes/no/pending replies, relationship tags, gifts, dietary flags, guest requests, caterer confirmation, search/filtering, archive/restore, and guest CSV export. Mailings count households, responses count people, and dietary summaries count attending guests. | Step 2 guest and reply core implemented. Visual seating and meal choices remain pending. |
+| Checklist | Editable tasks, 22 optional starter tasks, planning windows, assignees, completion summaries, fixed and relative dates, and upcoming/overdue tasks. Starter imports deduplicate. Changing the wedding date recalculates relative deadlines. | Checklist portion of Step 3 implemented. |
+| Planning Schedule | A chronological agenda combining appointments, tours, tastings, open dated tasks, and outstanding booked installments. Events support dates, optional times, locations, vendor links, notes, completion, and Upcoming/Past/All filters. | Agenda implemented. The original month-grid calendar remains pending. |
+| Day-of itinerary | Separate section 07 with activity start and optional end times, Ben/Maya/Together/custom tracks, simultaneous activities, shared milestones, locations, notes, vendor links, track filtering, following-day activities, overnight finishes, and print styles. Date changes preserve saved clock times. | Code and migration implemented and merged in PR #6. Hosted migration completion and usable live delivery remain unverified in the reviewed records. |
+| Mood board | A saved public Pinterest board URL, an embedded official board preview in a sandboxed frame, and a direct link fallback. | A concrete moodboard implementation has been added. Preview availability depends on Pinterest and browser settings. |
+
+Implementation evidence comes from the app entry point and the budget, planner, feature, and itinerary modules, with release context in the README. [App source](https://github.com/iTriedaThing/beyas-big-day/blob/d4aec754a5cbb020fab21eca7576af2453c274c6/docs/app.js) · [Budget logic](https://github.com/iTriedaThing/beyas-big-day/blob/d4aec754a5cbb020fab21eca7576af2453c274c6/docs/budget.js) · [Planner logic](https://github.com/iTriedaThing/beyas-big-day/blob/d4aec754a5cbb020fab21eca7576af2453c274c6/docs/planner.js) · [Schedule and moodboard](https://github.com/iTriedaThing/beyas-big-day/blob/d4aec754a5cbb020fab21eca7576af2453c274c6/docs/features.js) · [Itinerary](https://github.com/iTriedaThing/beyas-big-day/blob/d4aec754a5cbb020fab21eca7576af2453c274c6/docs/itinerary.js)
+
+### Additions and refinements made during development
+
+- **Editable payments and refunds with history.** Amount, type, date, payer, notes, expense, and installment can be corrected. Optimistic versions detect conflicting edits. Original recorder attribution is retained and private history records before/after values and the editor.
+- **Unbooking an agreement.** A reason is recorded, the expense returns to planning, quote selections clear, payments remain recorded, and installment reminders pause until explicit rebooking.
+- **Confirmed deletion.** Categories, vendors, expenses, offers, installments, transactions, households, guests, tasks, events, and picture attachments support typed confirmation with an explanation of linked effects. Deleted records disappear from active totals and exports through tombstones and retained history. Deleted-record recovery has no user interface. Guest/task archive and restore remain separate available actions.
+- **Guest attribution.** Guests can be attributed to Ben, Maya, or Together/unspecified, with attribution included in CSV exports.
+- **Vendor and venue improvements.** Overall 1–5 ratings order the vendor cards independently of package ratings. Website links are clickable. Private JPEG, PNG, and WebP attachments support captions and a 5 MB per-image limit.
+- **Presentation and usability.** A forest-green, eggplant, lilac, and sage palette, botanical artwork, responsive cards, RSVP/progress charts, and the countdown below the subtitle establish the app’s visual design. Expense forms say “Budgeted amount.” The whole Forecast card is clickable, chart selection survives polling, and settings offer a time-zone dropdown.
+- **Browser fixes.** The recorded walkthrough led to fixes for clipped money cards, an incorrectly visible Save button in history, Pinterest widget loading, and decoration intercepting Forecast clicks.
+- **Itinerary refinements.** Custom tracks, after-midnight handling, per-track printing, and preserving activities when a linked vendor is deleted extend the original timeline proposal.
+
+These additions are documented in the feedback and itinerary acceptance records. [Feedback record](https://github.com/iTriedaThing/beyas-big-day/blob/d4aec754a5cbb020fab21eca7576af2453c274c6/FEEDBACK-VALIDATION.md) · [Browser findings](https://github.com/iTriedaThing/beyas-big-day/blob/d4aec754a5cbb020fab21eca7576af2453c274c6/BROWSER-ACCEPTANCE.md) · [Itinerary record](https://github.com/iTriedaThing/beyas-big-day/blob/d4aec754a5cbb020fab21eca7576af2453c274c6/ITINERARY-VALIDATION.md)
+
+### Development and release milestones
+
+| Date | Milestone | Evidence recorded |
+| --- | --- | --- |
+| November 13 | Shared budget foundation | Repository setup records the base migration, shared wedding, two memberships, and starter categories. |
+| November 13 | Guests and checklist | Repository records application of the additive guest/checklist migration. |
+| November 14 | Couple-feedback release | PR #4 merged. The rollout record for PR #5 confirms migration version 20261114163318, member-role access, outsider isolation, private bucket configuration, unchanged existing row counts, and 16 signed-out API checks. |
+| November 14 | Day-of itinerary | PR #6 merged at d4aec754. Its validation file still describes migration 20261114194639 as pending. Merge status establishes source integration. Hosted readiness requires a later rollout record or a direct check. |
+
+[Setup and release documentation](https://github.com/iTriedaThing/beyas-big-day/blob/d4aec754a5cbb020fab21eca7576af2453c274c6/README.md) · [Feedback rollout](https://github.com/iTriedaThing/beyas-big-day/pull/5) · [Itinerary merge](https://github.com/iTriedaThing/beyas-big-day/pull/6)
+
+### Verification recorded and work still open
+
+The itinerary validation records **52 passing Node tests**, static syntax/asset checks, four migrations and their access suites on a disposable PostgreSQL database, and local security advisors with no issues. Feedback validation records a mock browser walkthrough covering the new workflows and responsive layouts. The itinerary walkthrough covers parallel tracks, overnight events, editing, filtering, deletion, and a 375px layout. These reports are development evidence with the following remaining acceptance items.
+
+- Confirm hosted itinerary migration readiness and run its real member/outsider and signed-out checks.
+- Verify sign-in, synchronization, conflicts, and deletion with the two actual accounts.
+- Verify hosted photo upload/download and access restrictions.
+- Confirm payment CSV delivery when exporting both budget files, external vendor links opening correctly, and physical-phone keyboard behavior.
+- Review actual itinerary print-preview pagination and PDF/printer output. The recorded print attempt entered a blocking native dialog and did not establish successful output.
+
+[Recorded browser checks and limits](https://github.com/iTriedaThing/beyas-big-day/blob/d4aec754a5cbb020fab21eca7576af2453c274c6/BROWSER-ACCEPTANCE.md) · [Recorded itinerary checks and limits](https://github.com/iTriedaThing/beyas-big-day/blob/d4aec754a5cbb020fab21eca7576af2453c274c6/ITINERARY-VALIDATION.md)
+
+The following planned functionality is still outstanding in the reviewed source and release documentation.
+
+| Planned area | Remaining work |
+| --- | --- |
+| Menu planning | Selectable dish cards, course options, guest meal choices, meal counts, and linking the menu estimate to one catering expense. Dietary notes and caterer confirmation are already available. |
+| Visual seating | Ceremony and reception plans, capacities, numbered seats, head-table handling, guest placement, and conflicting-seat checks. |
+| Month calendar | A month-grid view over the existing dated planning records. The chronological Schedule is available. |
+| Guest-entered responses | Household-limited guest reply access and submission. Partner-entered RSVP handling is available. |
+| Optional planning extras | AI planning assistance/notes, vendor-question guides, save-the-date and signage tools, and honeymoon planning. A public Pinterest board preview is available. |
+
+For subsequent updates, append the date, reviewed commit, newly implemented behavior, release/migration evidence, and remaining verification. Use this record alongside the original acceptance examples when selecting the next development task.
+
+## New effort: Productizing the Big Day wedding planner - November 15, 2026
+
+**Status: proposed product direction and discovery backlog; not implemented or a release commitment.** This additive effort extends the personal wedding planner toward a product that can be marketed and sold to other couples. It preserves the original brief and development history above. The user's marketing background will inform customer research, positioning, the questions the product asks, and validation of willingness to pay. Building with Codex is part of the development approach; commercial readiness still needs to be demonstrated through a reliable product and a useful customer experience.
+
+### Founding ideas and infrastructure discovery
+
+These ideas came from a conversation with a trusted software-engineering friend. Record them as options to investigate, rather than settled architecture or purchases:
+
+| Idea | Productization follow-up |
+| --- | --- |
+| An AWS EC2 instance | Evaluate EC2 as a hosting option against the current deployment and other managed hosting options. Define the actual hosting needs, operating cost, maintenance, backups, and deployment process before choosing or migrating infrastructure. |
+| A few domain names around "Your Big Day" | Explore the product name and suitable domains. Check availability, brand conflicts, and purchase/renewal costs before selecting domains. No availability or ownership is established here. |
+| "DuckDuckGo or Cloudflare" for domain research | Preserve the original note: use search to discover naming options and investigate Cloudflare or a registrar for domain availability and registration. Treat the exact service choice as an open research item. |
+| Infrastructure first, mobile application afterward | Establish a dependable web product and hosting foundation before committing to a separate mobile application. Decide later whether responsive web, an installable web experience, or a native application best serves customers. |
+| Android Studio for mobile and tablet emulators | Investigate Android Studio emulators as part of later mobile/tablet development and device testing. Define platform coverage and real-device acceptance checks when selecting the mobile approach. |
+| "Your Big Honeymoon" | Explore honeymoon planning as a possible companion product, extension, or brand. Its scope, pricing, and relationship to wedding planning remain undecided. |
+| A separate elopement feature? | Research whether elopements need a tailored planning path within the product or a separate offering. Avoid assuming that a full wedding checklist fits an elopement. |
+
+### Core product requirement: a guided journey from first entry to the big day
+
+An excellent wizard should combine a quick start with ongoing guidance through wedding planning. It should help a couple get through the initial setup, understand what matters next, and progress toward their wedding day without having to understand every planner section first. This is a central part of the productization effort, not merely a first-login tutorial.
+
+Proposed experience to refine during discovery:
+
+1. **Learn the couple's starting point.** Ask about wedding versus elopement, planning stage, date or approximate timeframe, location, estimated guest count, budget, priorities, and relevant accessibility or dietary needs. Support "not sure yet" and already-booked items.
+2. **Deliver a useful quick start.** Turn the minimum necessary answers into a reviewable initial plan: budget setup, relevant checklist items, and a small set of next actions. Explain why each question matters and let the couple skip optional detail.
+3. **Guide the planning journey.** Connect milestones such as agreeing on priorities, setting a budget, comparing venues/vendors, booking, managing guests, and preparing the day-of itinerary. Explain what to do, which decisions depend on others, and where to do it in the app.
+4. **Keep guidance connected to real planning data.** Reuse the existing budget, vendor, guest, task, schedule, and itinerary records. Completing work in a planner section should advance the guided journey; the wizard must not create a competing checklist or duplicate expenses.
+5. **Let couples return and adapt.** Save progress, support resuming and revisiting answers, and adapt to changed dates, budgets, or plans. Preview consequential changes and preserve existing bookings, payments, and completed work.
+6. **Carry the couple through the final preparations.** Surface remaining decisions, approaching payments, guest confirmations, and day-of readiness in manageable steps, with optional details available when needed.
+
+Initial acceptance goals for this future feature:
+
+- A new couple can reach a useful starting plan without completing every field or reading a manual.
+- A couple with no firm date or venue can proceed, save, and return later.
+- A couple already partway through planning can record its progress without repeating irrelevant steps.
+- Guidance offers a clear next action and explains its purpose; completed work stays consistent across the wizard and planner.
+- Reopening the wizard or revising answers does not duplicate records or silently overwrite financial commitments.
+- The flow works on phone, tablet, and desktop, with accessible controls and clear progress.
+
+### Suggested work sequence and open decisions
+
+1. **Product discovery and positioning:** identify the first target customer, interview couples about planning friction, articulate the value beyond a spreadsheet/checklist, and test pricing or payment models. Use the user's marketing experience to shape the questions and interpret the answers.
+2. **Commercial foundation:** select branding/domains and hosting; define self-service account creation, separate private workspaces for different couples, partner invitations, support, data export/deletion, backups/recovery, and operating costs. These are readiness requirements to scope, not claims about the current personal release.
+3. **Guided web experience:** design and validate the wizard with couples, then implement the quick start and continuing planning guidance against existing planner records. Measure setup completion, points of confusion, and whether users know what to do next.
+4. **Pilot and launch preparation:** test with a small group of couples, resolve reliability and usability problems, and validate the offer before expanding. Define launch criteria and a sustainable support process.
+5. **Expansion after the foundation:** assess mobile applications and honeymoon planning. Investigate elopement needs early enough to inform the wizard, while keeping a separate elopement product an open decision.
+
+Next concrete planning deliverable: a productization brief covering the initial audience, customer problem, proposed offer, wizard flow, hosting/domain decision criteria, and a phased backlog. Domain purchases, infrastructure changes, mobile development, pricing, and a public launch are not authorized or completed by this planning entry.
+
