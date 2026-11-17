@@ -9,10 +9,12 @@ raise notice 'PASS rejected: %',message;return;end;
 raise exception 'FAIL accepted: %',message;end; $$;
 insert into auth.users(id) values('00000000-0000-0000-0000-000000000001'),('00000000-0000-0000-0000-000000000002'),('00000000-0000-0000-0000-000000000003');
 insert into public.weddings(id,name,planning_headcount) values('10000000-0000-0000-0000-000000000001','Menu test',80),('10000000-0000-0000-0000-000000000002','Other',90);
+insert into public.weddings(id,name) values('10000000-0000-0000-0000-000000000003','Menu before expense');
 insert into public.wedding_members values
 ('10000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','Ben'),
 ('10000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','Maya'),
 ('10000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000003','Outsider');
+insert into public.wedding_members values('10000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','Ben');
 insert into public.vendors(id,wedding_id,name) values('20000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','Chef'),('20000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000002','Other chef');
 insert into public.categories(id,wedding_id,name) values('21000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','Food');
 insert into public.invitations(id,wedding_id,household_name) values('22000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','Friends');
@@ -22,6 +24,9 @@ insert into public.guests(id,wedding_id,invitation_id,name,rsvp,is_companion) va
 ('23000000-0000-0000-0000-000000000003','10000000-0000-0000-0000-000000000001','22000000-0000-0000-0000-000000000001','Declined','no',false);
 set local role authenticated;
 set local request.jwt.claim.sub='00000000-0000-0000-0000-000000000001';
+insert into public.menu_courses(id,wedding_id,name) values('30000000-0000-0000-0000-000000000003','10000000-0000-0000-0000-000000000003','Desserts');
+insert into public.menu_options(wedding_id,course_id,name,unit_cents) values('10000000-0000-0000-0000-000000000003','30000000-0000-0000-0000-000000000003','Cake',0);
+select pg_temp.denied($q$update public.weddings set currency='EUR' where id='10000000-0000-0000-0000-000000000003'$q$,'currency locked by explicit zero price before any expense exists');
 insert into public.expenses(id,wedding_id,category_id,title,target_cents) values('24000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','21000000-0000-0000-0000-000000000001','Catering',500000);
 insert into public.menu_courses(id,wedding_id,name,choices_offered) values
 ('30000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','Mains',true),
@@ -40,6 +45,7 @@ update public.weddings set planning_headcount=90 where id='10000000-0000-0000-00
 select pg_temp.assert((private.menu_estimate('10000000-0000-0000-0000-000000000001')->>'cents')::bigint=95500,'headcount changes shared estimate');
 select pg_temp.assert((public.budget_snapshot('10000000-0000-0000-0000-000000000001')->'expenses'->0->>'menu_estimate_cents')::bigint=95500,'snapshot enriches the same expense');
 select pg_temp.assert((select count(*)=1 from public.expenses),'no duplicate catering bill');
+select pg_temp.denied($q$update public.weddings set currency='EUR' where id='10000000-0000-0000-0000-000000000001'$q$,'currency with recorded menu prices');
 savepoint price_boundaries;
 update public.weddings set planning_headcount=null where id='10000000-0000-0000-0000-000000000001';
 select pg_temp.assert(private.menu_estimate('10000000-0000-0000-0000-000000000001')->>'cents' is null,'unknown headcount stays unknown');

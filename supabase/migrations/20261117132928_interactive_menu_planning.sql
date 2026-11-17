@@ -76,6 +76,9 @@ do $$ declare t text; begin
 end; $$;
 create function private.guard_menu_expense() returns trigger language plpgsql set search_path='' as $$
 begin
+  if new.currency is distinct from old.currency and exists(select 1 from public.menu_options where wedding_id=new.id and not deleted and unit_cents is not null) then
+    raise exception 'Currency is fixed after recording menu prices';
+  end if;
   if new.menu_expense_id is not null and not exists(select 1 from public.expenses where wedding_id=new.id and id=new.menu_expense_id and not deleted) then raise exception 'Catering expense unavailable'; end if;
   return new;
 end; $$;
