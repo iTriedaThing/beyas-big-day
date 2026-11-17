@@ -1,6 +1,6 @@
 # Interactive menu planning
 
-Prepared November 17, 2026 on `feat/interactive-menu-planning`. Hosting remains GitHub Pages; there are no new dependencies. This feature needs the additive `supabase/migrations/20261117132928_interactive_menu_planning.sql` migration after the four existing migrations. **It has not been applied to hosted Supabase.** No live menus, guests, passwords, payments, or agreements were changed.
+Prepared November 17, 2026 on `feat/interactive-menu-planning`. Hosting remains GitHub Pages; there are no new dependencies. This feature needs the additive `supabase/migrations/20261117141256_interactive_menu_planning.sql` migration after the four existing migrations. **Applied with explicit approval to beyas-big-day (`nennjenlgfkblsmpkzfr`) on November 17, 2026, recorded as version `20261117141256`.** The generated local filename was aligned to hosted history without changing its SQL. Do not apply it again there. No menu sample rows or account changes were made; existing expense, payment and amendment row checksums were unchanged. The feature frontend is still pending PR merge/publication.
 
 ## Behavior and pricing
 
@@ -48,3 +48,13 @@ The fixture uses invented records and no real authentication/email/Storage traff
 9. Assign table labels; enter separate dietary requests and caterer confirmations. Inspect the caterer CSV for correct attending-only dish/table rows and unnamed companions. Check print preview and PDF pagination for the meal manifest, including repeated table headings and no clipped columns. Test search, forms, file picker and manifest scrolling on both phones.
 
 For repeatable local SQL validation, use an isolated database with `tests/bootstrap.sql`, the base migration and `tests/access.sql`, planner migration and `tests/planner-access.sql`, `tests/storage-bootstrap.sql`, feedback migration and `tests/feedback-access.sql`, itinerary migration and `tests/itinerary-access.sql`, then the menu migration and `tests/menu-access.sql`, always with `psql -v ON_ERROR_STOP=1`. Never run the bootstrap against hosted Supabase.
+
+## Approved hosted rollout — November 17, 2026
+
+- Target confirmed active/healthy: `beyas-big-day` (`nennjenlgfkblsmpkzfr`). All four prerequisite migrations were present. The approved menu SQL applied successfully and migration history now includes `20261117141256_interactive_menu_planning`.
+- Existing counts unchanged: 1 wedding, 2 memberships, 7 expenses, 10 payment/refund records, 91 guests, 9 vendors, 3 agreement amendments, 22 tasks, 0 itinerary items. Before/after checksums of complete expense, payment and amendment rows match. The three new menu tables are empty.
+- All three new tables have RLS, membership SELECT/INSERT/UPDATE policies, authenticated SELECT grants, and no anonymous SELECT or authenticated DELETE/TRUNCATE grants. All three are in `supabase_realtime`. The `menu-photos` bucket is private, capped at 5 MB, restricted to JPEG/PNG/WebP, with three membership/path policies.
+- Hosted `node scripts/check-public-access.mjs --menu`: all **20 checks passed**, returning database permission denial for signed-out callers.
+- Read-only transaction simulations under Ben and Maya's authenticated database roles each see one wedding, `menu_ready=true`, prior `itinerary_ready=true`, and empty course/dish/meal arrays. An unrelated authenticated role sees zero weddings and no wedding details or menu rows. These are RLS/snapshot checks, not actual browser sign-in or Realtime delivery tests.
+- Hosted security advisors report only the preexisting leaked-password-protection warning, previously confirmed unavailable on the current plan. No new database/RLS security findings. Reference: [Supabase password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
+- Frontend PR merge/publication remains separate. Actual two-account browser syncing, hosted photo upload/download, physical-phone use, and print/PDF pagination still need the acceptance checks above.
