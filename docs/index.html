@@ -8,6 +8,8 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' blob:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Beya’s big day · Our wedding planner</title>
   <link rel="icon" href="./brand.svg" type="image/svg+xml">
+  <link rel="manifest" href="./app.webmanifest">
+  <link rel="apple-touch-icon" href="./icon-192.png">
   <link rel="stylesheet" href="./styles.css">
   <script type="module" src="./app.js"></script>
 </head>
@@ -15,7 +17,19 @@
   <header><a class="brand" href="./"><img src="./brand.svg" alt=""><div>Beya’s big day <span>THE PLAN, TOGETHER</span></div></a><div id="account"></div></header>
   <main id="main"><p>Bringing your plans together…</p></main>
   <p id="notice" role="status" aria-live="polite"></p>
-  <dialog id="editor" aria-labelledby="dialog-title"><form id="edit-form"><h2 id="dialog-title"></h2><div id="fields"></div><p id="form-error" role="alert"></p><div class="actions"><button type="button" id="cancel" class="secondary">Cancel</button><button type="submit" id="save">Save</button></div></form></dialog>
+  <dialog id="editor" aria-labelledby="dialog-title">
+    <form id="edit-form">
+      <div id="editor-body">
+        <h2 id="dialog-title" tabindex="-1" autofocus></h2>
+        <div id="fields"></div>
+        <p id="form-error" role="alert"></p>
+      </div>
+      <div class="actions editor-actions">
+        <button type="button" id="cancel" class="secondary">Cancel</button>
+        <button type="submit" id="save">Save</button>
+      </div>
+    </form>
+  </dialog>
   <footer>One plan. Two people. Every little detail.</footer>
 </body>
 </html>

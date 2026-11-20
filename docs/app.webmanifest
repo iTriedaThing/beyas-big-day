@@ -1,0 +1,14 @@
+{
+  "id": "./",
+  "name": "Beya’s Big Day",
+  "short_name": "The Big Day",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f4f0",
+  "theme_color": "#314641",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

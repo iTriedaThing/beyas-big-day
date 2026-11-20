@@ -95,6 +95,13 @@ After reviewing the feature branch and authorizing its promotion to `main` and P
 
 Routine completed units of work are committed and related commits are pushed together under the user’s standing Git workflow preference. No hosted migration, account provisioning, release promotion, or deployment is implied by a commit or push; those actions need separate authorization.
 
+### Install on a phone
+
+- **Android Chrome** opens the install action from its browser menu.
+- **iPhone Safari** offers **Share → Add to Home Screen**. Turn on **Open as Web App** if shown and tap **Add**. iPhone Chrome also offers **Add to Home Screen** from Share.
+
+Open **The Big Day** from the home screen and sign in with your existing account. The planner uses its existing online connection.
+
 ## Data and calculation rules
 
 - All money is integer cents, with strict decimal parsing. The release supports USD, CAD, GBP, EUR, AUD, and NZD (two decimal places). Each amount is limited to 1,000,000,000 cents. Currency changes are blocked once expenses exist; there is no currency conversion.
