@@ -2,6 +2,7 @@ import { config } from './config.js';
 import { Api, subscribe, takeAuthRedirect } from './api.js';
 import { cents, money, quoteTotal, summarize, installmentBalance, csv, localDate } from './budget.js';
 import {escapeHTML as esc,button as btn,input,textarea as area,select} from './ui.js';
+import {setupEditor} from './editor.js';
 import {TASK_WINDOWS,DIETARY_FLAGS,GUEST_TAGS,STARTER_TASKS,householdGuests,guestSummary} from './planner.js';
 import {renderGuests,renderPlanning,plannerOverview,displayDate} from './planner-views.js';
 import {websiteLink,timeZones,countdown,attributionOptions,renderSchedule,renderMoodboard,pinterestBoard,validatePhoto} from './features.js';
@@ -12,6 +13,7 @@ const $ = s => document.querySelector(s);
 const initialAuthRedirect = takeAuthRedirect(window.location, window.history);
 const amount = (name, label, value = null, required = false) => input(name, label, value === null ? '' : (value / 100).toFixed(2), 'text', `inputmode="decimal" ${required ? 'required' : ''} maxlength="14"`);
 const dialog = $('#editor');
+const editor = setupEditor(dialog, $('#editor-body'));
 let api, data, totals, weddingId, tab = 'budget', selectedExpense = '', selectedCategory = '', stopLive, loading = false, loadAgain = false, syncStatus = 'Connecting…', noticeTimer;
 let sessionEpoch = 0, handlingAuthRedirect = false;
 const guestFilters = {search:'',rsvp:'',tag:'',view:'active'};
@@ -247,10 +249,13 @@ function openForm(title, fields, save) {
       if (api.pending) await api.retryPending(); else await save(Object.fromEntries(new FormData(event.currentTarget)));
       dialog.close(); notify('Saved.'); await reload();
     } catch (error) {
-      $('#form-error').textContent = errorMessage(error); $('#save').textContent = api.pending ? 'Retry original save' : 'Save';
+      const message = $('#form-error');
+      message.textContent = errorMessage(error);
+      message.scrollIntoView({block:'nearest'});
+      $('#save').textContent = api.pending ? 'Retry original save' : 'Save';
     } finally { $('#save').disabled = false; $('#cancel').disabled = false; }
   };
-  dialog.showModal();
+  editor.open();
 }
 function operation(path, body, method = 'POST', prefer = 'return=representation') {
   return api.mutate({ path, options: { method, body, prefer } });
@@ -668,8 +673,13 @@ const actions = {
 };
 document.addEventListener('click', async event => {
   const target = event.target.closest('[data-action]'); if (!target) return;
+  const wasOpen = dialog.open;
   event.preventDefault(); target.disabled=true;
-  try {await actions[target.dataset.action]?.(target.dataset.id,target.dataset.value);} catch(error){notify(errorMessage(error),true); if(data)render();} finally{target.disabled=false;}
+  try {
+    const result = actions[target.dataset.action]?.(target.dataset.id,target.dataset.value);
+    if (!wasOpen && dialog.open) editor.rememberOpener(target);
+    await result;
+  } catch(error){notify(errorMessage(error),true); if(data)render();} finally{target.disabled=false;}
 });
 document.addEventListener('change',event => {
   if(event.target.id==='comparison'){comparison=event.target.value;$('#bars').innerHTML=bars(comparison);}

@@ -10,18 +10,21 @@ test('feedback flows render and save through the app; Forecast survives polling 
   t.after(()=>{for(const [name,descriptor]of previous){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else delete globalThis[name];}});
   const elements=new Map(),listeners=new Map(),intervals=[];
   class Element {
-    constructor(id){this.id=id;this.textContent='';this.open=false;this.isConnected=true;this.disabled=false;this.value='';}
+    constructor(id){this.id=id;this.textContent='';this.open=false;this.isConnected=true;this.disabled=false;this.value='';this.style={setProperty(){},removeProperty(){}};this.listeners=new Map();}
     set innerHTML(html){this.html=html;for(const match of html.matchAll(/(?:^|\s)id="([^"]+)"/g))elements.set(match[1],new Element(match[1]));}
     get innerHTML(){return this.html||'';}
     replaceChildren(){this.innerHTML='';}
     querySelector(){return new Element('button');}
-    showModal(){this.open=true;}close(){this.open=false;}reset(){}scrollIntoView(){}addEventListener(){}
+    showModal(){this.open=true;}
+    close(){this.open=false;this.listeners.get('close')?.();}
+    reset(){}scrollIntoView(){}
+    addEventListener(name,handler){this.listeners.set(name,handler);}
   }
   const el=id=>{if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);};
-  const storage=new Map();
+  const storage=new Map(), rootClasses=new Set(), scrollRestores=[];
   Object.assign(globalThis,{
-    document:{hidden:false,body:{classList:{toggle(){}}},querySelector:s=>s.startsWith('#')?el(s.slice(1)):null,addEventListener:(name,handler)=>listeners.set(name,handler)},
-    window:{location:new URL('http://localhost/'),history:{replaceState(){}},addEventListener(){}},
+    document:{hidden:false,body:{style:el('body').style,classList:{toggle(){}}},documentElement:{classList:{add:name=>rootClasses.add(name),remove:name=>rootClasses.delete(name)}},querySelector:s=>s.startsWith('#')?el(s.slice(1)):null,addEventListener:(name,handler)=>listeners.set(name,handler)},
+    window:{location:new URL('http://localhost/'),history:{replaceState(){}},scrollY:420,scrollTo:options=>scrollRestores.push(options),addEventListener(){}},
     sessionStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     FormData:class extends Map{constructor(form){super(Object.entries(form.values||{}));}},
     setInterval:(fn,ms)=>{intervals.push({fn,ms});return intervals.length;},clearInterval(){},setTimeout:()=>1,clearTimeout(){},
@@ -34,8 +37,16 @@ test('feedback flows render and save through the app; Forecast survives polling 
   assert.match(el('main').innerHTML,/Sign in/);
   el('login').values={email:'example@example.invalid',password:'mock-only'};
   await el('login').onsubmit({preventDefault(){},currentTarget:el('login')});await settle();
-  const click=async(action,id='')=>{const target={dataset:{action,id},disabled:false};await listeners.get('click')({preventDefault(){},target:{closest:()=>target}});await settle();};
+  let focusedAction;
+  const click=async(action,id='')=>{const target={dataset:{action,id},disabled:false,isConnected:true,focus(){focusedAction=action;}};await listeners.get('click')({preventDefault(){},target:{closest:()=>target}});await settle();};
   const submit=async values=>{el('edit-form').values=values;await el('edit-form').onsubmit({preventDefault(){},currentTarget:el('edit-form')});await settle();assert.equal(el('form-error').textContent,'');};
+  await click('task-new');
+  assert.equal(el('editor').open,true);
+  assert.equal(rootClasses.has('editor-open'),true);
+  el('cancel').onclick();
+  assert.equal(rootClasses.has('editor-open'),false);
+  assert.deepEqual(scrollRestores,[{top:420,behavior:'instant'}]);
+  assert.equal(focusedAction,'task-new');
   assert.match(el('main').innerHTML,/class="intro-note"[\s\S]*class="intro-countdown"/);
   assert.match(el('main').innerHTML,/class="forecast-link"/);
   listeners.get('change')({target:{id:'comparison',value:'forecast'}});
