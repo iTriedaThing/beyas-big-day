@@ -6,6 +6,7 @@ import {TASK_WINDOWS,DIETARY_FLAGS,GUEST_TAGS,STARTER_TASKS,householdGuests,gues
 import {renderGuests,renderPlanning,plannerOverview,displayDate} from './planner-views.js';
 import {websiteLink,timeZones,countdown,attributionOptions,renderSchedule,renderMoodboard,pinterestBoard,validatePhoto} from './features.js';
 import {renderItinerary,itineraryTracks,itineraryRecord} from './itinerary.js';
+import {renderMenu,menuCourses,menuDiners,guestMeal,menuOptionRecord,menuEstimate,menuCSV,PRICE_BASES} from './menu.js';
 
 const $ = s => document.querySelector(s);
 const initialAuthRedirect = takeAuthRedirect(window.location, window.history);
@@ -15,6 +16,9 @@ let api, data, totals, weddingId, tab = 'budget', selectedExpense = '', selected
 let sessionEpoch = 0, handlingAuthRedirect = false;
 const guestFilters = {search:'',rsvp:'',tag:'',view:'active'};
 let taskFilter = 'all', comparison = 'paid', scheduleFilter = 'upcoming', itineraryTrack='';
+const menuFilters={group:'course',vendor:'',search:''};
+const menuPhotoURLs=new Map();
+const menuPhotoLoads=new Map();
 const photoURLs = new Map();
 const photoLoads = new Map();
 const fmt = value => money(value, data.wedding.currency);
@@ -32,6 +36,8 @@ function errorMessage(error) {
 }
 function resetPrivateUI() {
   document.body.classList.toggle('printing-itinerary',false);
+  document.body.classList.toggle('printing-menu',false);
+  for(const url of menuPhotoURLs.values())URL.revokeObjectURL(url);menuPhotoURLs.clear();menuPhotoLoads.clear();
   for(const url of photoURLs.values()) URL.revokeObjectURL(url);photoURLs.clear();photoLoads.clear();
   sessionEpoch++; stopLive?.(); stopLive = null; data = null; weddingId = null;
   if (dialog.open) dialog.close();
@@ -121,7 +127,7 @@ function renderAccount() {
 function connectLive() {
   stopLive?.();
   if (!weddingId || !api.session) return;
-  stopLive = subscribe(api, weddingId, () => reload(), status => { syncStatus = status; if ($('#sync')) $('#sync').textContent = status; },!!data?.planner_ready,!!data?.feedback_ready,!!data?.itinerary_ready);
+  stopLive = subscribe(api, weddingId, () => reload(), status => { syncStatus = status; if ($('#sync')) $('#sync').textContent = status; },!!data?.planner_ready,!!data?.feedback_ready,!!data?.itinerary_ready,!!data?.menu_ready);
 }
 async function reload() {
   if (loading) { loadAgain = true; return; }
@@ -131,12 +137,12 @@ async function reload() {
     const snapshot = await api.snapshot(weddingId);
     if (epoch !== sessionEpoch) return;
     if (!snapshot.wedding) { resetPrivateUI(); $('#main').innerHTML = '<h1>Wedding access removed</h1><p>Contact your administrator.</p>'; renderAccount(); return; }
-    const previousReady = data?.planner_ready, previousFeedback=data?.feedback_ready,previousItinerary=data?.itinerary_ready;
-    data = {...snapshot,invitations:snapshot.invitations||[],guests:snapshot.guests||[],tasks:snapshot.tasks||[],events:snapshot.events||[],vendor_photos:snapshot.vendor_photos||[],itinerary_items:snapshot.itinerary_items||[]};
+    const previousReady = data?.planner_ready, previousFeedback=data?.feedback_ready,previousItinerary=data?.itinerary_ready,previousMenu=data?.menu_ready;
+    data = {...snapshot,invitations:snapshot.invitations||[],guests:snapshot.guests||[],tasks:snapshot.tasks||[],events:snapshot.events||[],vendor_photos:snapshot.vendor_photos||[],itinerary_items:snapshot.itinerary_items||[],menu_courses:snapshot.menu_courses||[],menu_options:snapshot.menu_options||[],guest_meals:snapshot.guest_meals||[]};
     if(selectedCategory&&!data.categories.some(c=>c.id===selectedCategory))selectedCategory='';
     if(itineraryTrack&&!itineraryTracks(data).includes(itineraryTrack))itineraryTrack='';
     totals = summarize(data); render();
-    if (stopLive && (previousReady !== data.planner_ready||previousFeedback!==data.feedback_ready||previousItinerary!==data.itinerary_ready)) connectLive();
+    if (stopLive && (previousReady !== data.planner_ready||previousFeedback!==data.feedback_ready||previousItinerary!==data.itinerary_ready||previousMenu!==data.menu_ready)) connectLive();
   } catch (error) {
     if (epoch !== sessionEpoch) return;
     if (!api.session) { resetPrivateUI(); renderLogin('Session expired. Sign in again.'); }
@@ -146,16 +152,17 @@ async function reload() {
 }
 function render() {
   document.body.classList.toggle('printing-itinerary',tab==='itinerary');
+  document.body.classList.toggle('printing-menu',tab==='menu');
   const previousBoard=document.querySelector('.moodboard-frame');
   renderAccount();
-  const primary=tab==='itinerary'?(data.itinerary_ready?btn('itinerary-new','+ Add activity','',''):''):tab==='schedule'?btn('event-new','+ Add event','',''):tab==='moodboard'?btn('moodboard-edit','Link Pinterest board'):tab==='guests'?btn('household-new','+ Add household','',''):tab==='planning'?btn('task-new','+ Add task','',''):btn('expense-new','+ Add expense','','')+btn('payment-new','Record payment');
+  const primary=tab==='menu'?(data.menu_ready?btn('menu-dish-new','+ Add dish','',''):''):tab==='itinerary'?(data.itinerary_ready?btn('itinerary-new','+ Add activity','',''):''):tab==='schedule'?btn('event-new','+ Add event','',''):tab==='moodboard'?btn('moodboard-edit','Link Pinterest board'):tab==='guests'?btn('household-new','+ Add household','',''):tab==='planning'?btn('task-new','+ Add task','',''):btn('expense-new','+ Add expense','','')+btn('payment-new','Record payment');
   $('#main').innerHTML = `<section class="intro"><div><p class="eyebrow">BEN + MAYA · A DAY THAT’S OURS</p><h1>${esc(data.wedding.name)}</h1><p class="intro-note">A little planning. A lot of love.</p>${countdown(data.wedding.wedding_date,today())}<p class="wedding-meta">${data.wedding.wedding_date?esc(displayDate(data.wedding.wedding_date)):'Our date is still a beautiful possibility'}<span>·</span>${esc(data.wedding.currency)}</p></div><div class="actions">${primary}</div></section>
     <div class="section-head utility-bar"><small id="sync" class="sync-status">${esc(syncStatus)}</small><div class="actions">${api.pending?btn('retry','Retry pending save'):''}${btn('refresh','Refresh')}${btn('settings','Wedding settings')}${btn('export','Budget CSVs')}</div></div>
-    <nav class="planner-nav" aria-label="Planner sections">${[['budget','Budget','01'],['vendors','Vendors & quotes','02'],['guests','Guest list','03'],['planning','Our checklist','04'],['schedule','Schedule','05'],['moodboard','Mood board','06'],['itinerary','Day-of itinerary','07']].map(([id,label,number])=>`<button type="button" data-action="tab-${id}" class="secondary" aria-pressed="${tab===id}"><span aria-hidden="true">${number}</span>${label}</button>`).join('')}</nav>
-    ${tab==='budget'?renderBudget():tab==='vendors'?renderVendors():tab==='guests'?renderGuests(data,guestFilters):tab==='planning'?renderPlanning(data,taskFilter,today()):tab==='schedule'?renderSchedule(data,today(),scheduleFilter):tab==='itinerary'?renderItinerary(data,itineraryTrack):renderMoodboard(data)}`;
+    <nav class="planner-nav" aria-label="Planner sections">${[['budget','Budget','01'],['vendors','Vendors & quotes','02'],['guests','Guest list','03'],['planning','Our checklist','04'],['schedule','Schedule','05'],['moodboard','Mood board','06'],['itinerary','Day-of itinerary','07'],['menu','Our menu','08']].map(([id,label,number])=>`<button type="button" data-action="tab-${id}" class="secondary" aria-pressed="${tab===id}"><span aria-hidden="true">${number}</span>${label}</button>`).join('')}</nav>
+    ${tab==='budget'?renderBudget():tab==='vendors'?renderVendors():tab==='guests'?renderGuests(data,guestFilters):tab==='planning'?renderPlanning(data,taskFilter,today()):tab==='schedule'?renderSchedule(data,today(),scheduleFilter):tab==='itinerary'?renderItinerary(data,itineraryTrack):tab==='menu'?renderMenu(data,menuFilters):renderMoodboard(data)}`;
   const nextBoard=document.querySelector('.moodboard-frame');
   if(previousBoard&&nextBoard&&previousBoard.getAttribute('src')===nextBoard.getAttribute('src'))nextBoard.replaceWith(previousBoard);
-  void loadPhotos();
+  void loadPhotos();void loadMenuPhotos();
 }
 function renderBudget() {
   const room = data.wedding.cap_cents - totals.forecast;
@@ -208,9 +215,10 @@ function renderExpense(id) {
   const e = data.expenses.find(e => e.id === id); if (!e) return '';
   const quotes = data.quotes.filter(q => q.expense_id === id);
   return `<section class="panel" id="expense-detail"><div class="section-head"><h2>${esc(e.title)}</h2><div class="actions">${btn('expense-edit', 'Edit expense', id)}${e.agreed_cents !== null ? btn('amend', 'Amend agreement', id)+(data.feedback_ready?btn('unbook','Unbook agreement',id):'') : btn('book', 'Book expense', id)}${btn('quote-new', 'Add quote', id)}${e.agreed_cents !== null ? btn('installment-new', 'Add installment', id) : ''}</div></div><p>${esc(e.notes)}</p>
-    ${e.agreed_cents !== null ? `<p>Agreed price: <strong>${fmt(e.agreed_cents)}</strong>. Quote edits do not change this agreement.</p>` : '<p class="muted">Compare offers below. Prefer one to use its total in the forecast.</p>'}
+    ${e.menu_linked?`<p class="good">Linked menu estimate: <strong>${fmt(e.menu_estimate_cents)}</strong>. ${e.agreed_cents!==null?'The booked agreement remains the Forecast.':'The menu supplies Forecast while linked, ahead of quotes or the budgeted amount.'} ${btn('tab-menu','Review menu')}</p>`:''}
+    ${e.agreed_cents !== null ? `<p>Agreed price: <strong>${fmt(e.agreed_cents)}</strong>. Quote and menu edits do not change this agreement.</p>` : `<p class="muted">Compare offers below. ${e.menu_linked?'Unlink the menu to use the preferred quote or budgeted amount in Forecast.':'Prefer one to use its total in the forecast.'}</p>`}
     <div class="quote-grid">${quotes.map(q => renderQuote(q,e)).join('') || '<p class="empty">No quotes yet. Add offers for this job to compare packages side by side.</p>'}</div>
-    ${e.agreed_cents === null && e.preferred_quote_id ? btn('clear-preferred', 'Use budgeted amount instead', e.id) : ''}
+    ${e.agreed_cents === null && e.preferred_quote_id ? btn('clear-preferred',e.menu_linked?'Clear preferred quote (menu stays linked)':'Use budgeted amount instead', e.id) : ''}
     ${data.amendments.filter(a => a.expense_id === id).map(a => `<p><small>Amendment ${esc(a.created_at.slice(0,10))} · ${fmt(a.previous_cents)} → ${a.agreed_cents===null?'Unbooked':fmt(a.agreed_cents)} · ${esc(a.reason)} · ${esc(memberName(a.entered_by))}</small></p>`).join('')}
     <p class="muted">Installment schedule: ${fmt(data.installments.filter(i => i.expense_id === id).reduce((s,i) => s+i.amount_cents,0))} · Agreed: ${fmt(e.agreed_cents)}. Unlinked payments need reconciliation against the schedule.</p></section>`;
 }
@@ -226,7 +234,7 @@ function renderPayments() {
 function renderVendors() {
   return `<section class="panel"><div class="section-head"><h2>Your vendors</h2>${btn('vendor-new','Add vendor','','')}</div><p class="muted">Contact details live here. Bookings and balances come from the same expenses as your budget.</p>${[...data.vendors].sort((a,b)=>(b.rating||0)-(a.rating||0)||a.name.localeCompare(b.name)).map(v => {
     const rows = totals.rows.filter(e => e.vendor_id === v.id && e.agreed_cents !== null);
-    return `<article class="panel"><div class="section-head"><h3>${esc(v.name)}</h3><div class="actions">${btn('vendor-edit','Edit details',v.id)}${data.feedback_ready?btn('photo-new','Attach picture',v.id)+btn('event-vendor','Schedule visit',v.id)+btn('vendor-delete','Delete',v.id):''}</div></div><p>${esc(v.contact_name)} · ${esc(v.email)} · ${esc(v.phone)}</p><p>${websiteLink(v.website)}</p><p>${esc(v.vendor_kind==='venue'?'Venue':'Vendor')} · ${v.rating?`${v.rating}/5 overall rating`:'Not rated yet'}</p>${vendorPhotos(v.id)}<p>${esc(v.notes)}</p>${rows.length ? expenseTable(rows) : '<p class="muted">No booked expenses yet.</p>'}</article>`;
+    return `<article class="panel"><div class="section-head"><h3>${esc(v.name)}</h3><div class="actions">${btn('vendor-edit','Edit details',v.id)}${data.feedback_ready?btn('photo-new','Attach picture',v.id)+btn('event-vendor','Schedule visit',v.id)+btn('vendor-delete','Delete',v.id):''}</div></div><p>${esc(v.contact_name)} · ${esc(v.email)} · ${esc(v.phone)}</p><p>${websiteLink(v.website)}</p><p>${esc(v.vendor_kind==='venue'?'Venue':'Vendor')} · ${v.rating?`${v.rating}/5 overall rating`:'Not rated yet'}</p>${vendorPhotos(v.id)}<p>${esc(v.notes)}</p>${data.menu_ready?`<p>${data.menu_options.filter(o=>o.vendor_id===v.id).length} menu dishes ${btn('menu-vendor-open','View dishes',v.id)}</p>`:''}${rows.length ? expenseTable(rows) : '<p class="muted">No booked expenses yet.</p>'}</article>`;
   }).join('') || '<p class="empty">Add vendor contacts, then add packages to an expense to compare quotes.</p>'}</section><section class="panel"><h2>Compare offers by expense</h2>${expenseTable(totals.rows)}</section>${selectedExpense ? renderExpense(selectedExpense) : ''}`;
 }
 function openForm(title, fields, save) {
@@ -255,10 +263,11 @@ function insert(table, record) {
 }
 function settingsForm() {
   const w = data.wedding;
-  openForm('Wedding settings', input('name','Wedding name',w.name,'text','required maxlength="120"') + select('currency','Currency (two decimal places)', ['USD','CAD','GBP','EUR','AUD','NZD'].map(c => [c,c]),w.currency) + amount('cap','Wedding cap',w.cap_cents,true) + input('wedding_date','Wedding date (optional)',w.wedding_date || '','date') + (data.planner_ready?input('planning_headcount','Planning guest count (optional)',w.planning_headcount??'','number','min="0" max="100000" step="1"'):'') + select('time_zone','Time zone',timeZones(w.time_zone),w.time_zone) + '<p class="muted">Currency is fixed after your first expense. Dates follow your wedding’s time zone. Planning headcount is a starting point for new per-guest quotes; existing offers keep their saved count.</p>', f => update('weddings',w,{name:f.name.trim(),currency:f.currency,cap_cents:cents(f.cap),wedding_date:f.wedding_date || null,time_zone:f.time_zone.trim(),...(data.planner_ready?{planning_headcount:f.planning_headcount===''?null:Number(f.planning_headcount)}:{})}));
-  if (data.expenses.length) $('#f-currency').disabled = true;
+  const currencyLocked=data.expenses.length||data.menu_options.some(o=>o.unit_cents!==null);
+  openForm('Wedding settings', input('name','Wedding name',w.name,'text','required maxlength="120"') + select('currency','Currency (two decimal places)', ['USD','CAD','GBP','EUR','AUD','NZD'].map(c => [c,c]),w.currency) + amount('cap','Wedding cap',w.cap_cents,true) + input('wedding_date','Wedding date (optional)',w.wedding_date || '','date') + (data.planner_ready?input('planning_headcount','Planning guest count (optional)',w.planning_headcount??'','number','min="0" max="100000" step="1"'):'') + select('time_zone','Time zone',timeZones(w.time_zone),w.time_zone) + '<p class="muted">Currency is fixed after your first expense or recorded menu price. Dates follow your wedding’s time zone. Planning headcount is a starting point for new per-guest quotes; existing offers keep their saved count.</p>', f => update('weddings',w,{name:f.name.trim(),currency:f.currency,cap_cents:cents(f.cap),wedding_date:f.wedding_date || null,time_zone:f.time_zone.trim(),...(data.planner_ready?{planning_headcount:f.planning_headcount===''?null:Number(f.planning_headcount)}:{})}));
+  if (currencyLocked) $('#f-currency').disabled = true;
   // Disabled controls are omitted from FormData; retain the original currency.
-  if (data.expenses.length) { const hidden = document.createElement('input'); hidden.type='hidden'; hidden.name='currency'; hidden.value=w.currency; $('#fields').append(hidden); }
+  if (currencyLocked) { const hidden = document.createElement('input'); hidden.type='hidden'; hidden.name='currency'; hidden.value=w.currency; $('#fields').append(hidden); }
 }
 const checkbox = (name,label,checked=false) => `<label class="check-label"><input type="checkbox" name="${name}" value="on" ${checked?'checked':''}> <span>${esc(label)}</span></label>`;
 function requirePlanner() {
@@ -299,10 +308,11 @@ function guestForm(id,invitationId) {
     +'<fieldset class="dietary-options"><legend>Dietary needs · choose all that apply</legend>'
     +DIETARY_FLAGS.map(([key,label])=>checkbox(`diet_${key}`,label,guest?.dietary_flags?.includes(key))).join('')+'</fieldset>'
     +area('dietary_notes','Guest’s allergy or dietary request',guest?.dietary_notes||'')
-    +area('caterer_confirmation','Caterer’s response / confirmation',guest?.caterer_confirmation||''),f=>{
+    +area('caterer_confirmation','Caterer’s response / confirmation',guest?.caterer_confirmation||'')
+    +(data.menu_ready?input('meal_table','Caterer table label (optional)',guest?.meal_table||'','text','maxlength="100"')+'<p>Save guest details, then use Choose meals to record a dish for each course.</p>':''),f=>{
       const name=f.name.trim()||null,is_companion=f.is_companion==='on';
       if(!name&&!is_companion)throw new Error('Enter a name or mark this guest as an unnamed companion.');
-      const record={...(data.feedback_ready?{invited_by:f.invited_by||null}:{}),invitation_id:f.invitation_id,name,is_companion,rsvp:f.rsvp,tag:f.tag,gift_received:f.gift_received==='on',
+      const record={...(data.menu_ready?{meal_table:f.meal_table.trim()}:{}),...(data.feedback_ready?{invited_by:f.invited_by||null}:{}),invitation_id:f.invitation_id,name,is_companion,rsvp:f.rsvp,tag:f.tag,gift_received:f.gift_received==='on',
         dietary_flags:DIETARY_FLAGS.filter(([key])=>f[`diet_${key}`]==='on').map(([key])=>key),dietary_notes:f.dietary_notes,caterer_confirmation:f.caterer_confirmation};
       return guest?update('guests',guest,record):insert('guests',record);
     });
@@ -431,7 +441,7 @@ function requireFeedback() {
 }
 function unbookForm(id) {
   requireFeedback();const e=data.expenses.find(e=>e.id===id);
-  openForm('Unbook agreement',`<p>Return ${esc(e.title)} to planning. Forecast returns to its budgeted amount. Existing payments and agreement history stay recorded; installment reminders pause until it is booked again. This does not cancel a real vendor contract or refund money.</p>`+area('reason','Reason for unbooking'),f=>{
+  openForm('Unbook agreement',`<p>Return ${esc(e.title)} to planning. Forecast returns to ${e.menu_linked?'its linked menu estimate':'its budgeted amount'}. Existing payments and agreement history stay recorded; installment reminders pause until it is booked again. This does not cancel a real vendor contract or refund money.</p>`+area('reason','Reason for unbooking'),f=>{
     if(f.reason.trim().length<3)throw new Error('Enter a reason for unbooking.');
     return update('expenses',e,{agreed_cents:null,preferred_quote_id:null,booked_quote_id:null,amendment_reason:f.reason.trim()});
   });
@@ -441,14 +451,14 @@ function deleteForm(table,id) {
   const label=record.title||record.name||record.household_name||record.package_name||record.label||record.caption||table.replaceAll('_',' ');
   const messages={
     categories:'This also deletes every expense in this category, their quotes, installments, and payment/refund records from active totals.',
-    vendors:'This also deletes expenses linked to this vendor, their payments and schedules, all offers from this vendor, and attached pictures. Scheduled visits and day-of activities remain, without the vendor link.',
+    vendors:'This also deletes expenses linked to this vendor, their payments and schedules, all offers from this vendor, and attached pictures. Scheduled visits, day-of activities, and menu dishes remain, without the vendor link.',
     expenses:'This also deletes its quotes, installments, and payments/refunds from active totals.',
     invitations:'This also deletes every guest in this household and removes their seats and replies from counts.',
     installments:'Its payments remain recorded but become unallocated. This does not change the expense agreement.',
     quotes:'If this is preferred, forecast returns to the budgeted amount. Unbook an agreement before deleting its booked quote.',
     payments:'This removes the transaction from balances and may reopen or reduce an amount owed. It does not refund or transfer money.',
     guests:'This removes this person from active seat, RSVP, and dietary counts.',
-    tasks:'This removes this task from checklist progress and the schedule.',events:'This removes the event from the schedule.',vendor_photos:'This removes the picture from the vendor gallery.',itinerary_items:'This removes the activity from the day-of itinerary and its printable copy.'
+    tasks:'This removes this task from checklist progress and the schedule.',events:'This removes the event from the schedule.',vendor_photos:'This removes the picture from the vendor gallery.',itinerary_items:'This removes the activity from the day-of itinerary and its printable copy.',menu_courses:'This also removes its dishes. Existing choices will need review; catering forecasts update.',menu_options:'This removes the dish and its photo from the menu. Affected guest choices will need review; catering forecasts update.'
   };
   openForm(`Delete ${label}`,`<p class="warning">${esc(messages[table])}</p><p>This removes it from the planner and exports. Private history is retained for accountability. There is no restore button for deleted records.</p>`+input('confirm','Type DELETE to confirm','','text','required autocomplete="off"'),f=>{
     if(f.confirm!=='DELETE')throw new Error('Type DELETE to confirm.');
@@ -470,6 +480,94 @@ function eventForm(id,vendorId='') {
       const record={...f,title:f.title.trim(),vendor_id:f.vendor_id||null,start_time:f.start_time||null,completed:f.completed==='on'};
       return e?update('events',e,record):insert('events',record);
     });
+}
+function requireMenu() {
+  if(!data.menu_ready)throw new Error('Menu planning needs its reviewed database migration before it can be used.');
+}
+function menuCourseForm(id) {
+  requireMenu();const course=data.menu_courses.find(c=>c.id===id);
+  openForm(course?'Edit course':'Add a course',input('name','Course name',course?.name||'','text','required maxlength="100" list="course-names"')
+    +'<datalist id="course-names"><option value="Starters"><option value="Mains"><option value="Desserts"><option value="Drinks"></datalist>'
+    +input('sort_order','Display order',course?.sort_order??menuCourses(data).length*10,'number','required min="0" max="1000" step="1"')
+    +checkbox('choices_offered','Ask each attending guest for one choice in this course',course?.choices_offered??true)
+    +'<p class="muted">Turn this off for shared service such as a buffet or drinks. Several selected dishes may be offered in either case.</p>',f=>{
+      const name=f.name.trim(),sort_order=Number(f.sort_order);
+      if(!name||!Number.isInteger(sort_order)||sort_order<0||sort_order>1000)throw new Error('Enter a course name and whole-number display order from 0 to 1,000.');
+      const record={name,sort_order,choices_offered:f.choices_offered==='on'};
+      return course?update('menu_courses',course,record):insert('menu_courses',record);
+    });
+}
+function menuDishForm(id) {
+  requireMenu();const dish=data.menu_options.find(o=>o.id===id),courses=menuCourses(data);
+  if(!courses.length){menuCourseForm();return;}
+  openForm(dish?'Edit a dish':'A delicious possibility',input('name','Dish / package name',dish?.name||'','text','required maxlength="160"')
+    +select('course_id','Course',opts(courses),dish?.course_id||courses[0].id)
+    +select('vendor_id','Prepared by',[['','Vendor to be decided'],...opts(data.vendors)],dish?.vendor_id||'')
+    +checkbox('selected','Include on our menu',dish?.selected)
+    +select('rating','Our rating',[['','Not rated'],...['1','2','3','4','5'].map(n=>[n,`${n} / 5`])],String(dish?.rating||''))
+    +select('pricing_basis','How is it priced?',PRICE_BASES,dish?.pricing_basis||'per_person')
+    +amount('price','Price (blank = unknown)',dish?.unit_cents??null)
+    +input('quantity','Planned quantity (used only for unit × quantity)',dish?.quantity??1,'number','required min="0" max="100000" step="1"')
+    +input('unit','Quantity unit',dish?.unit||'serving','text','required maxlength="60"')
+    +'<p class="muted">Shared per-person dishes each use the planning headcount. For alternative plated dishes, use per-confirmed-choice pricing or planned quantities. Selecting a dish never books a vendor or records a payment.</p>'
+    +area('notes','Ingredients, inclusions & tasting notes',dish?.notes||''),f=>{
+      const record=menuOptionRecord(f);
+      if(record.pricing_basis==='per_choice'&&!courses.find(c=>c.id===record.course_id)?.choices_offered)throw new Error('Enable guest choices on this course to use per-choice pricing.');
+      return dish?update('menu_options',dish,record):insert('menu_options',record);
+    });
+}
+function menuMealForm(guestId) {
+  requireMenu();const guest=menuDiners(data).find(g=>g.id===guestId),courses=menuCourses(data).filter(c=>c.choices_offered);
+  if(!guest)throw new Error('Set this guest’s RSVP to Attending and restore their household before choosing meals.');
+  if(!courses.length)throw new Error('Add a course with guest choices first.');
+  let currentMeal;
+  openForm(`Meals for ${guest.name||'Unnamed companion'}`,select('course_id','Course',opts(courses),courses[0].id)
+    +'<div id="meal-choice"></div><p>Choose one of our selected dishes, or explicitly leave this course pending. Save, then reopen for another course.</p>'
+    +`<p>Guest request: ${esc([...(guest.dietary_flags||[]),guest.dietary_notes].filter(Boolean).join(' · ')||'None recorded')}</p><p>Caterer confirmation: ${esc(guest.caterer_confirmation||'Not yet confirmed')}</p>`,f=>{
+      const record={guest_id:guest.id,course_id:f.course_id,option_id:f.option_id||null};
+      return currentMeal?update('guest_meals',currentMeal,record):insert('guest_meals',record);
+    });
+  const draw=()=>{
+    const course=$('#f-course_id').value,meal=guestMeal(data,guest.id,course);
+    currentMeal=meal.record;
+    $('#meal-choice').innerHTML=select('option_id','Meal choice',[['','Choice pending'],...data.menu_options.filter(o=>o.course_id===course&&o.selected).map(o=>[o.id,`${o.name} · ${vendorName(o.vendor_id)}`])],meal.option?.id||'')
+      +(meal.status==='review'?'<p class="warning">The previous dish is no longer selected or available. Choose again or save as pending.</p>':'');
+  };draw();$('#f-course_id').onchange=draw;
+}
+function menuLinkForm() {
+  requireMenu();const estimate=menuEstimate(data),wedding=data.wedding;
+  openForm('Link our catering expense',select('expense_id','One existing expense',[['','No expense linked'],...opts(data.expenses,'title')],data.wedding.menu_expense_id||'')
+    +`<p>Current menu estimate: ${fmt(estimate.cents)}. Unbooked Forecast uses the linked menu estimate instead of its preferred quote or budgeted amount. Booked agreements and payments stay unchanged. This does not create an expense.</p>`
+    +'<p>To include catering fees, rentals, tax, or service in this estimate, add selected fixed-price package lines. Unlinking restores the usual quote/budget forecast.</p>',f=>update('weddings',wedding,{menu_expense_id:f.expense_id||null}));
+}
+function menuPhotoForm(id) {
+  requireMenu();const dish=data.menu_options.find(o=>o.id===id);let path='',uploaded=false;
+  openForm(`Photo for ${dish.name}`,input('file','Dish photo · JPEG, PNG, WebP; up to 5 MB','','file','accept="image/jpeg,image/png,image/webp"')
+    +(dish.photo_path?checkbox('remove','Remove current photo'):'')+'<p>Save the dish first, then attach a private photo. A replacement gets a new private file.</p>',async f=>{
+      if(f.remove==='on')return update('menu_options',dish,{photo_path:null});
+      if(!uploaded){const file=$('#f-file').files[0],ext=validatePhoto(file);path=`${weddingId}/${dish.id}/${crypto.randomUUID()}.${ext}`;await api.photo(path,{file,bucket:'menu-photos'});uploaded=true;$('#f-file').disabled=true;}
+      return update('menu_options',dish,{photo_path:path});
+    });
+}
+async function loadMenuPhotos() {
+  if(tab!=='menu')return;const epoch=sessionEpoch;
+  // Drop stale blob URLs when a partner replaces/removes a photo.
+  const paths=new Set(data.menu_options.map(o=>o.photo_path).filter(Boolean));
+  for(const [path,url] of menuPhotoURLs)if(!paths.has(path)){URL.revokeObjectURL(url);menuPhotoURLs.delete(path);}
+  await Promise.allSettled(data.menu_options.filter(o=>o.photo_path).map(async o=>{
+    if(!menuPhotoURLs.has(o.photo_path)){
+      if(!menuPhotoLoads.has(o.photo_path))menuPhotoLoads.set(o.photo_path,api.photo(o.photo_path,{bucket:'menu-photos'}));
+      try{const blob=await menuPhotoLoads.get(o.photo_path);if(epoch!==sessionEpoch)return;if(!menuPhotoURLs.has(o.photo_path))menuPhotoURLs.set(o.photo_path,URL.createObjectURL(blob));}
+      catch{const el=document.querySelector(`[data-menu-photo-error="${o.id}"]`);if(epoch===sessionEpoch&&el)el.textContent='Photo unavailable. Refresh to retry.';return;}
+      finally{if(epoch===sessionEpoch)menuPhotoLoads.delete(o.photo_path);}
+    }
+    const el=document.querySelector(`[data-menu-photo="${o.id}"]`);if(el&&epoch===sessionEpoch)el.src=menuPhotoURLs.get(o.photo_path);
+  }));
+}
+function downloadMenu() {
+  const url=URL.createObjectURL(new Blob([menuCSV(data)],{type:'text/csv;charset=utf-8'}));
+  const a=document.createElement('a');a.href=url;a.download='wedding-caterer-meals.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  notify('Exported the attending guest meal list. Keep dietary and contact information private.');
 }
 function itineraryForm(id) {
   if(!data.itinerary_ready)throw new Error('The day-of itinerary is being prepared. Your existing planner is ready to use.');
@@ -525,13 +623,20 @@ function exportCSVs() {
   notify('Exported expense and payment CSVs. Allow multiple downloads if your browser asks. Amounts are integer cents.');
 }
 const actions = {
+  'tab-menu':()=>{tab='menu';render();},'menu-course-new':()=>menuCourseForm(),'menu-course-edit':menuCourseForm,
+  'menu-dish-new':()=>menuDishForm(),'menu-dish-edit':menuDishForm,
+  'menu-toggle':id=>changePlannerRecord('menu_options',id,{selected:!data.menu_options.find(o=>o.id===id).selected}),
+  'menu-meal':menuMealForm,'menu-link':menuLinkForm,'menu-photo':menuPhotoForm,
+  'menu-expense':id=>{selectedExpense=id;tab='budget';render();},
+  'menu-vendor-open':id=>{menuFilters.vendor=id;menuFilters.group='vendor';tab='menu';render();},
+  'menu-export':()=>downloadMenu(),'menu-print':()=>window.print(),
   'tab-itinerary':()=>{tab='itinerary';render();},'itinerary-new':()=>itineraryForm(),'itinerary-edit':itineraryForm,
   'itinerary-print':()=>window.print(),
   'tab-schedule':()=>{tab='schedule';render();},'tab-moodboard':()=>{tab='moodboard';render();},
   'unbook':unbookForm,'payment-edit':id=>paymentForm('','',id),'payment-history':paymentHistory,
   'event-new':()=>eventForm(),'event-edit':eventForm,'event-vendor':id=>eventForm('',id),
   'moodboard-edit':moodboardForm,'moodboard-refresh':()=>{const frame=document.querySelector('.moodboard-frame');if(frame)frame.src=frame.getAttribute('src');},'photo-new':photoForm,
-  ...Object.fromEntries([['expense','expenses'],['vendor','vendors'],['category','categories'],['household','invitations'],['guest','guests'],['task','tasks'],['quote','quotes'],['installment','installments'],['payment','payments'],['event','events'],['photo','vendor_photos'],['itinerary','itinerary_items']].map(([action,table])=>[`${action}-delete`,id=>deleteForm(table,id)])),
+  ...Object.fromEntries([['expense','expenses'],['vendor','vendors'],['category','categories'],['household','invitations'],['guest','guests'],['task','tasks'],['quote','quotes'],['installment','installments'],['payment','payments'],['event','events'],['photo','vendor_photos'],['itinerary','itinerary_items'],['menu-course','menu_courses'],['menu-dish','menu_options']].map(([action,table])=>[`${action}-delete`,id=>deleteForm(table,id)])),
   'tab-guests':()=>{tab='guests';render();},'tab-planning':()=>{tab='planning';render();},
   'household-new':()=>householdForm(),'household-edit':householdForm,
   'household-archive':id=>changePlannerRecord('invitations',id,{archived:!data.invitations.find(i=>i.id===id).archived}),
@@ -568,6 +673,8 @@ document.addEventListener('click', async event => {
 });
 document.addEventListener('change',event => {
   if(event.target.id==='comparison'){comparison=event.target.value;$('#bars').innerHTML=bars(comparison);}
+  if(event.target.id==='f-menu-group'){menuFilters.group=event.target.value;render();}
+  if(event.target.id==='f-menu-vendor'){menuFilters.vendor=event.target.value;render();}
   if(event.target.id==='f-schedule-filter'){scheduleFilter=event.target.value;render();}
   if(event.target.id==='f-itinerary-track'){itineraryTrack=event.target.value;render();}
   if(event.target.id==='f-category-filter'){selectedCategory=event.target.value;render();}
@@ -575,6 +682,7 @@ document.addEventListener('change',event => {
   if(guestSelects[event.target.id]){guestFilters[guestSelects[event.target.id]]=event.target.value;render();}
 });
 document.addEventListener('input',event=>{
+  if(event.target.id==='f-menu-search'){menuFilters.search=event.target.value;const cursor=event.target.selectionStart;render();$('#f-menu-search').focus();$('#f-menu-search').setSelectionRange(cursor,cursor);return;}
   if(event.target.id!=='f-guest-search')return;
   guestFilters.search=event.target.value;const cursor=event.target.selectionStart;render();
   $('#f-guest-search').focus();$('#f-guest-search').setSelectionRange(cursor,cursor);

@@ -11,7 +11,7 @@ test('feedback flows render and save through the app; Forecast survives polling 
   const elements=new Map(),listeners=new Map(),intervals=[];
   class Element {
     constructor(id){this.id=id;this.textContent='';this.open=false;this.isConnected=true;this.disabled=false;this.value='';}
-    set innerHTML(html){this.html=html;for(const match of html.matchAll(/\bid="([^"]+)"/g))elements.set(match[1],new Element(match[1]));}
+    set innerHTML(html){this.html=html;for(const match of html.matchAll(/(?:^|\s)id="([^"]+)"/g))elements.set(match[1],new Element(match[1]));}
     get innerHTML(){return this.html||'';}
     replaceChildren(){this.innerHTML='';}
     querySelector(){return new Element('button');}
@@ -67,6 +67,20 @@ test('feedback flows render and save through the app; Forecast survives polling 
   await click('itinerary-edit',itineraryId);await submit({title:'Updated first look',track:'Wedding party',start_time:'10:15',end_time:'11:00',day_offset:'0',location:'Courtyard',vendor_id:'',notes:'Bring flowers'});
   assert.match(el('main').innerHTML,/Updated first look/);
   await click('itinerary-delete',itineraryId);await submit({confirm:'DELETE'});assert.ok(!el('main').innerHTML.includes('Updated first look'));assert.match(el('main').innerHTML,/Maya gets ready/);
+  await click('tab-menu');assert.match(el('main').innerHTML,/A menu to remember/);assert.match(el('main').innerHTML,/Garden vegetable tart/);
+  await click('menu-course-new');await submit({name:'Desserts',sort_order:'3'});
+  const dessertId=el('main').innerHTML.match(/<h3>Desserts<\/h3>[\s\S]*?data-action="menu-course-edit" data-id="([^"]+)"/)[1];
+  await click('menu-dish-new');await submit({name:'Lemon cakes',course_id:dessertId,vendor_id:'vendor',pricing_basis:'per_quantity',price:'3.25',quantity:'90',unit:'cake',selected:'on',rating:'5',notes:'Lemon zest'});
+  assert.match(el('main').innerHTML,/Lemon cakes/);assert.match(el('main').innerHTML,/90 cake planned/);
+  await click('menu-meal','sam');el('f-course_id').value='main';el('f-course_id').onchange();
+  await submit({course_id:'main',option_id:'fish'});assert.match(el('main').innerHTML,/1 confirmed choices · ★★★★/);
+  await click('menu-meal','morgan-guest');el('f-course_id').value='main';el('f-course_id').onchange();
+  await submit({course_id:'main',option_id:'tart'});assert.match(el('main').innerHTML,/\$372.50/);
+  await click('menu-link');await submit({expense_id:'catering'});
+  await click('tab-budget');assert.match(el('main').innerHTML,/\$372.50/);assert.match(el('main').innerHTML,/\$1,000.00/);
+  await click('menu-vendor-open','vendor');assert.match(el('main').innerHTML,/value="vendor" selected/);assert.match(el('main').innerHTML,/Lemon cakes/);
+  const cakeId=el('main').innerHTML.match(/<h4>Lemon cakes<\/h4>[\s\S]*?data-action="menu-toggle" data-id="([^"]+)"/)[1];
+  await click('menu-dish-delete',cakeId);await submit({confirm:'DELETE'});assert.ok(!el('main').innerHTML.includes('Lemon cakes'));assert.match(el('main').innerHTML,/\$80.00/);
   await click('tab-budget');await click('expense-delete','catering');assert.match(el('fields').innerHTML,/quotes, installments, and payments/);
   await submit({confirm:'DELETE'});assert.ok(!el('main').innerHTML.includes('Corrected deposit'));
 });

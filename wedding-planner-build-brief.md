@@ -198,3 +198,53 @@ The following planned functionality is still outstanding in the reviewed source 
 
 For subsequent updates, append the date, reviewed commit, newly implemented behavior, release/migration evidence, and remaining verification. Use this record alongside the original acceptance examples when selecting the next development task.
 
+## New effort: Productizing the Big Day wedding planner - November 15, 2026
+
+**Status: proposed product direction and discovery backlog; not implemented or a release commitment.** This additive effort extends the personal wedding planner toward a product that can be marketed and sold to other couples. It preserves the original brief and development history above. The user's marketing background will inform customer research, positioning, the questions the product asks, and validation of willingness to pay. Building with Codex is part of the development approach; commercial readiness still needs to be demonstrated through a reliable product and a useful customer experience.
+
+### Founding ideas and infrastructure discovery
+
+These ideas came from a conversation with a trusted software-engineering friend. Record them as options to investigate, rather than settled architecture or purchases:
+
+| Idea | Productization follow-up |
+| --- | --- |
+| An AWS EC2 instance | Evaluate EC2 as a hosting option against the current deployment and other managed hosting options. Define the actual hosting needs, operating cost, maintenance, backups, and deployment process before choosing or migrating infrastructure. |
+| A few domain names around "Your Big Day" | Explore the product name and suitable domains. Check availability, brand conflicts, and purchase/renewal costs before selecting domains. No availability or ownership is established here. |
+| "DuckDuckGo or Cloudflare" for domain research | Preserve the original note: use search to discover naming options and investigate Cloudflare or a registrar for domain availability and registration. Treat the exact service choice as an open research item. |
+| Infrastructure first, mobile application afterward | Establish a dependable web product and hosting foundation before committing to a separate mobile application. Decide later whether responsive web, an installable web experience, or a native application best serves customers. |
+| Android Studio for mobile and tablet emulators | Investigate Android Studio emulators as part of later mobile/tablet development and device testing. Define platform coverage and real-device acceptance checks when selecting the mobile approach. |
+| "Your Big Honeymoon" | Explore honeymoon planning as a possible companion product, extension, or brand. Its scope, pricing, and relationship to wedding planning remain undecided. |
+| A separate elopement feature? | Research whether elopements need a tailored planning path within the product or a separate offering. Avoid assuming that a full wedding checklist fits an elopement. |
+
+### Core product requirement: a guided journey from first entry to the big day
+
+An excellent wizard should combine a quick start with ongoing guidance through wedding planning. It should help a couple get through the initial setup, understand what matters next, and progress toward their wedding day without having to understand every planner section first. This is a central part of the productization effort, not merely a first-login tutorial.
+
+Proposed experience to refine during discovery:
+
+1. **Learn the couple's starting point.** Ask about wedding versus elopement, planning stage, date or approximate timeframe, location, estimated guest count, budget, priorities, and relevant accessibility or dietary needs. Support "not sure yet" and already-booked items.
+2. **Deliver a useful quick start.** Turn the minimum necessary answers into a reviewable initial plan: budget setup, relevant checklist items, and a small set of next actions. Explain why each question matters and let the couple skip optional detail.
+3. **Guide the planning journey.** Connect milestones such as agreeing on priorities, setting a budget, comparing venues/vendors, booking, managing guests, and preparing the day-of itinerary. Explain what to do, which decisions depend on others, and where to do it in the app.
+4. **Keep guidance connected to real planning data.** Reuse the existing budget, vendor, guest, task, schedule, and itinerary records. Completing work in a planner section should advance the guided journey; the wizard must not create a competing checklist or duplicate expenses.
+5. **Let couples return and adapt.** Save progress, support resuming and revisiting answers, and adapt to changed dates, budgets, or plans. Preview consequential changes and preserve existing bookings, payments, and completed work.
+6. **Carry the couple through the final preparations.** Surface remaining decisions, approaching payments, guest confirmations, and day-of readiness in manageable steps, with optional details available when needed.
+
+Initial acceptance goals for this future feature:
+
+- A new couple can reach a useful starting plan without completing every field or reading a manual.
+- A couple with no firm date or venue can proceed, save, and return later.
+- A couple already partway through planning can record its progress without repeating irrelevant steps.
+- Guidance offers a clear next action and explains its purpose; completed work stays consistent across the wizard and planner.
+- Reopening the wizard or revising answers does not duplicate records or silently overwrite financial commitments.
+- The flow works on phone, tablet, and desktop, with accessible controls and clear progress.
+
+### Suggested work sequence and open decisions
+
+1. **Product discovery and positioning:** identify the first target customer, interview couples about planning friction, articulate the value beyond a spreadsheet/checklist, and test pricing or payment models. Use the user's marketing experience to shape the questions and interpret the answers.
+2. **Commercial foundation:** select branding/domains and hosting; define self-service account creation, separate private workspaces for different couples, partner invitations, support, data export/deletion, backups/recovery, and operating costs. These are readiness requirements to scope, not claims about the current personal release.
+3. **Guided web experience:** design and validate the wizard with couples, then implement the quick start and continuing planning guidance against existing planner records. Measure setup completion, points of confusion, and whether users know what to do next.
+4. **Pilot and launch preparation:** test with a small group of couples, resolve reliability and usability problems, and validate the offer before expanding. Define launch criteria and a sustainable support process.
+5. **Expansion after the foundation:** assess mobile applications and honeymoon planning. Investigate elopement needs early enough to inform the wizard, while keeping a separate elopement product an open decision.
+
+Next concrete planning deliverable: a productization brief covering the initial audience, customer problem, proposed offer, wizard flow, hosting/domain decision criteria, and a phased backlog. Domain purchases, infrastructure changes, mobile development, pricing, and a public launch are not authorized or completed by this planning entry.
+

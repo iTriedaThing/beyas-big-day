@@ -13,7 +13,7 @@ export function quoteTotal(quote) {
 }
 export function expenseTotals(expense, quotes, payments) {
   const quote = quotes.find(q => q.id === expense.preferred_quote_id);
-  const forecast = expense.agreed_cents ?? (quote ? quoteTotal(quote) : expense.target_cents);
+  const forecast = expense.agreed_cents ?? (expense.menu_linked ? expense.menu_estimate_cents : (quote ? quoteTotal(quote) : expense.target_cents));
   const paid = payments.filter(p => p.expense_id === expense.id)
     .reduce((sum, p) => sum + (p.kind === 'refund' ? -p.amount_cents : p.amount_cents), 0);
   return { forecast, paid, owed: expense.agreed_cents === null ? 0 : Math.max(0, expense.agreed_cents - paid),
