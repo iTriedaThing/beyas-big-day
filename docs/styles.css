@@ -30,6 +30,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .card{position:relative;padding:22px;overflow:hidden}.card>a,.card>span:first-child{font-size:11px;letter-spacing:.4px;text-decoration:none}.card .amount{display:block;font:34px/1.2 Georgia,serif;letter-spacing:-1px;margin:15px 0 8px}.card small{line-height:1.5;display:block;font-size:11px}
 .card.feature{color:#fffefc;background:var(--green);border-color:var(--green)}.card.feature a{color:inherit}.card.feature small{color:#dce5df}.card.feature::after{content:'✦';font:80px Georgia,serif;color:#ffffff0c;position:absolute;right:10px;bottom:-12px}
 .panel{margin:22px 0}.panel p:last-child{margin-bottom:0}.twocol{display:grid;grid-template-columns:1fr 1fr;gap:22px}.twocol>.panel{margin:0 0 22px}.panel .panel{padding:20px;margin-bottom:0;box-shadow:none}
+.vendor-website { overflow-wrap: anywhere; }
 .good{color:var(--green)}.purple{color:var(--purple)}.warning{color:var(--red);font-weight:600}
 .badge,.gift-badge{display:inline-flex;padding:4px 8px;border-radius:5px;font-size:10px;line-height:1.3;letter-spacing:.3px;background:var(--lavender);color:var(--purple)}.gift-badge{background:var(--sage-light);color:var(--green)}.preline{white-space:pre-line}
 label{display:block;font-size:12px;font-weight:600;color:var(--sage);margin:16px 0 6px}
@@ -80,6 +81,8 @@ html.editor-open {
   padding: var(--editor-padding);
 }
 #editor-body textarea { overscroll-behavior-y: contain; }
+/* The static title receives initial focus. Interactive controls keep their focus rings. */
+#dialog-title:focus { outline: none; }
 #editor-body fieldset, #editor-body input, #editor-body select, #editor-body textarea {
   min-width: 0;
   max-width: 100%;
@@ -89,6 +92,15 @@ html.editor-open {
 #editor-body input[type="time"]::-webkit-date-and-time-value {
   min-height: 1lh;
   text-align: start;
+}
+@supports (-webkit-touch-callout: none) {
+  /* iOS WebKit can add padding outside a 100%-wide native date/time control. */
+  #editor-body input:is([type="date"], [type="time"]) {
+    -webkit-appearance: none;
+    appearance: none;
+    width: -webkit-fill-available;
+    width: stretch;
+  }
 }
 #form-error:empty { margin: 0; }
 .editor-actions {
