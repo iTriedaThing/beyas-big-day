@@ -149,12 +149,13 @@ export class Api {
 }
 
 // Supabase's documented Phoenix JSON protocol, with polling as a fallback.
-export function subscribe(api, wedding, onChange, onStatus, includePlanner = false, includeFeedback = false, includeItinerary = false, includeMenu = false) {
+export function subscribe(api, wedding, onChange, onStatus, includePlanner = false, includeFeedback = false, includeItinerary = false, includeMenu = false, includeSeating = false) {
   let closed = false, heartbeat, reconnect, socket, ref = 0;
   const tables = ['weddings', 'wedding_members', 'categories', 'expenses', 'vendors', 'quotes', 'payments', 'installments', 'contract_amendments'];
   if (includePlanner) tables.push('invitations', 'guests', 'tasks');
   if (includeFeedback) tables.push('events','vendor_photos');
   if (includeItinerary) tables.push('itinerary_items');
+  if (includeSeating) tables.push('seating_changes');
   if (includeMenu) tables.push('menu_courses','menu_options','guest_meals');
   function connect() {
     if (closed || !api.session) return;

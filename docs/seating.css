@@ -1,0 +1,62 @@
+#back-to-top {
+  position: fixed;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(14px, env(safe-area-inset-bottom));
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 21px;
+  background: var(--white);
+  box-shadow: 0 3px 12px #263b3024;
+  z-index: 4;
+}
+.editor-open #back-to-top, body:has(#notice:not(:empty)) #back-to-top { display: none; }
+.seating-board {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 12px;
+  padding: clamp(10px,3vw,30px);
+  margin-top: 16px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+button.seating-unit {
+  display: flex;
+  flex-direction: column;
+  background: var(--white);
+  border-color: var(--line);
+  color: var(--green);
+  min-width: 0;
+  padding: 12px;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+button.seating-unit:hover { background: #f0f2ed; border-color: var(--green); }
+.seating-unit strong { font: 600 clamp(14px,2vw,19px) Georgia,serif; }
+.seating-diagram { display: block; width: 100%; max-width: 190px; }
+.seating-diagram .surface { fill: #dce6dd; stroke: #52695e; stroke-width: 2; }
+.seating-diagram .pew { stroke-width: 4; stroke-linecap: round; }
+.chair circle { fill: var(--white); stroke: #56695e; stroke-width: 1.5; }
+.chair.assigned circle { fill: var(--green); }
+.chair text { text-anchor: middle; dominant-baseline: central; fill: var(--green); }
+.chair.assigned text { fill: white; }
+.ceremony-board { grid-template-columns: minmax(0,1fr); }
+.ceremony-board .altar { justify-self: center; font: italic 20px Georgia,serif; color: var(--green); }
+.ceremony-board .seating-unit { width: min(100%,600px); justify-self: center; }
+.ceremony-board .seating-diagram { max-width: 360px; }
+.seating-closeup { display: grid; grid-template-columns: minmax(150px,1fr) minmax(0,2fr); gap: 24px; }
+.seating-drawing { align-self: start; display: grid; place-items: center; background: var(--paper); padding: 18px; border-radius: 12px; }
+.seating-drawing svg { max-width: 440px; }
+.seat-roster { padding: 0; list-style: none; }
+.seat-roster li { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding: 10px 0; overflow-wrap: anywhere; }
+.seat-roster small { display: block; }
+[aria-label="Seating plan"] button[aria-pressed="true"] { color: white; background: var(--green); }
+@media(max-width:650px) {
+  .seating-board { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .ceremony-board, .seating-closeup { grid-template-columns: minmax(0,1fr); }
+  .seating-drawing svg { max-width: 280px; }
+}
+@media(prefers-reduced-motion:reduce) { html:root { scroll-behavior: auto; } }
+@media print { #back-to-top { display:none; } }
