@@ -2,7 +2,7 @@
 
 Beya is Ben + Maya’s couple name. The individual partners are Ben and Maya.
 
-A private wedding planner for two people: GitHub Pages serves `docs/`; a dedicated Supabase project provides Auth, Postgres, RLS, Realtime, and private photo Storage. The shared budget, partner-entered guest list/RSVPs, and date-based checklist from [the build brief](wedding-planner-build-brief.md) are implemented. The couple's reviewed feedback includes a unified dated agenda and Pinterest board preview. Interactive menu planning is implemented on this branch, its approved hosted migration is applied, and its frontend release is pending; see [menu acceptance](MENU-VALIDATION.md). Visual seating, guest-entered replies, and a month-grid calendar remain later releases. PR #4 is published, and the approved feedback migration was applied on November 14, 2026; see [feedback acceptance](FEEDBACK-VALIDATION.md).
+A private wedding planner for two people: GitHub Pages serves `docs/`; a dedicated Supabase project provides Auth, Postgres, RLS, Realtime, and private photo Storage. The shared budget, partner-entered guest list/RSVPs, and date-based checklist from [the build brief](wedding-planner-build-brief.md) are implemented. The couple's reviewed feedback includes a unified dated agenda and Pinterest board preview. Interactive menu planning is implemented on this branch, its approved hosted migration is applied, and its frontend release is pending; see [menu acceptance](MENU-VALIDATION.md). Visual seating is prepared for review. Guest-entered replies and a month-grid calendar remain later releases. PR #4 is published, and the approved feedback migration was applied on November 14, 2026; see [feedback acceptance](FEEDBACK-VALIDATION.md).
 
 ## What ships
 
@@ -23,6 +23,20 @@ A private wedding planner for two people: GitHub Pages serves `docs/`; a dedicat
 - Version-filtered edits detect simultaneous changes. Payment UUIDs and unconfirmed save payloads survive reloads in the same tab. Realtime refetches, a 20-second foreground polling fallback, and focus/online refresh keep two open screens current.
 
 ## Local development
+
+### Visual seating
+
+**09 · Seating chart** opens on the reception. Add circular, rectangular or square tables individually or in batches of up to 200. Select a table in the diagram or the list to rename it (including a head table), change its shape, capacity or position, and assign guests. Repeat batches to extend either plan. The room overview follows display order and wraps to the available width.
+
+Assigning or moving a household includes all active attending and pending guests, including unnamed companions. **Split household** moves one person. Guests can take any seat at their table or receive a specific number. Choose a chair in the diagram or use the guest’s seat-number control. Large rows (over 20 seats) and tables (over 32) use a simplified diagram with the full capacity and numbered roster available in the detail view.
+
+The ceremony can stay empty, include only reserved family rows, or cover the full guest list. Each row has its own capacity and can have a name and reserved designation. Each event has separate assignments. Declining or archiving a guest releases their places. Removing a row or table releases its occupants and keeps their invitations. The reception assignment also supplies the guest-list table filter and the caterer’s table label.
+
+The [local migration](supabase/migrations/20261123145047_visual_seating.sql) converts active guests’ existing caterer labels into named circular reception tables, initially sized to the number already assigned. Review shape and actual venue capacity after rollout. Each seating command checks membership and plan revision. A failed move preserves the prior assignments, and retrying a confirmed request cannot duplicate a batch. Shared schema changes and Pages publication need separate approval.
+
+For a fixture preview, run the mock server below. To exercise the [SQL regression suite](tests/seating-access.sql), start a disposable local PostgreSQL database with the existing Auth and Storage test stubs and migrations through the interactive menu. Run `psql -X -v ON_ERROR_STOP=1 -d <local-test-db> -f tests/seating-access.sql`. The suite seeds synthetic legacy labels, applies the seating migration inside a transaction and rolls back.
+
+The planner sections are listed in `docs/app.js`. The `--planner-columns` property in `docs/styles.css` controls how many appear in each navigation row. The bottom-right arrow returns keyboard focus to the active planner section after the navigation has scrolled out of view.
 
 ### Interactive menu — prepared November 17, 2026
 

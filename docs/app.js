@@ -1,3 +1,5 @@
+import {renderSeating} from './seating.js';
+import {seatingForm} from './seating-editor.js';
 import { config } from './config.js';
 import { Api, subscribe, takeAuthRedirect } from './api.js';
 import { cents, money, quoteTotal, summarize, installmentBalance, csv, localDate } from './budget.js';
@@ -18,6 +20,12 @@ let api, data, totals, weddingId, tab = 'budget', selectedExpense = '', selected
 let sessionEpoch = 0, handlingAuthRedirect = false;
 const guestFilters = {search:'',rsvp:'',tag:'',view:'active'};
 let taskFilter = 'all', comparison = 'paid', scheduleFilter = 'upcoming', itineraryTrack='';
+let seatingEvent='reception', seatingUnit='';
+const plannerSections = [
+  ['budget','Budget'], ['vendors','Vendors & quotes'], ['guests','Guest list'],
+  ['planning','Our checklist'], ['schedule','Schedule'], ['moodboard','Mood board'],
+  ['itinerary','Day-of itinerary'], ['menu','Our menu'], ['seating','Seating chart']
+];
 const menuFilters={group:'course',vendor:'',search:''};
 const menuPhotoURLs=new Map();
 const menuPhotoLoads=new Map();
@@ -37,6 +45,8 @@ function errorMessage(error) {
   return `${error.message}${api?.pending ? ' The outcome is unconfirmed. Retry the original save; its IDs are preserved in this tab.' : ''}`;
 }
 function resetPrivateUI() {
+  seatingEvent='reception'; seatingUnit='';
+  $('#back-to-top').hidden=true;
   document.body.classList.toggle('printing-itinerary',false);
   document.body.classList.toggle('printing-menu',false);
   for(const url of menuPhotoURLs.values())URL.revokeObjectURL(url);menuPhotoURLs.clear();menuPhotoLoads.clear();
@@ -129,7 +139,7 @@ function renderAccount() {
 function connectLive() {
   stopLive?.();
   if (!weddingId || !api.session) return;
-  stopLive = subscribe(api, weddingId, () => reload(), status => { syncStatus = status; if ($('#sync')) $('#sync').textContent = status; },!!data?.planner_ready,!!data?.feedback_ready,!!data?.itinerary_ready,!!data?.menu_ready);
+  stopLive = subscribe(api, weddingId, () => reload(), status => { syncStatus = status; if ($('#sync')) $('#sync').textContent = status; },!!data?.planner_ready,!!data?.feedback_ready,!!data?.itinerary_ready,!!data?.menu_ready,!!data?.seating_ready);
 }
 async function reload() {
   if (loading) { loadAgain = true; return; }
@@ -139,12 +149,12 @@ async function reload() {
     const snapshot = await api.snapshot(weddingId);
     if (epoch !== sessionEpoch) return;
     if (!snapshot.wedding) { resetPrivateUI(); $('#main').innerHTML = '<h1>Wedding access removed</h1><p>Contact your administrator.</p>'; renderAccount(); return; }
-    const previousReady = data?.planner_ready, previousFeedback=data?.feedback_ready,previousItinerary=data?.itinerary_ready,previousMenu=data?.menu_ready;
+    const previousReady = data?.planner_ready, previousFeedback=data?.feedback_ready,previousItinerary=data?.itinerary_ready,previousMenu=data?.menu_ready,previousSeating=data?.seating_ready;
     data = {...snapshot,invitations:snapshot.invitations||[],guests:snapshot.guests||[],tasks:snapshot.tasks||[],events:snapshot.events||[],vendor_photos:snapshot.vendor_photos||[],itinerary_items:snapshot.itinerary_items||[],menu_courses:snapshot.menu_courses||[],menu_options:snapshot.menu_options||[],guest_meals:snapshot.guest_meals||[]};
     if(selectedCategory&&!data.categories.some(c=>c.id===selectedCategory))selectedCategory='';
     if(itineraryTrack&&!itineraryTracks(data).includes(itineraryTrack))itineraryTrack='';
     totals = summarize(data); render();
-    if (stopLive && (previousReady !== data.planner_ready||previousFeedback!==data.feedback_ready||previousItinerary!==data.itinerary_ready||previousMenu!==data.menu_ready)) connectLive();
+    if (stopLive && (previousReady !== data.planner_ready||previousFeedback!==data.feedback_ready||previousItinerary!==data.itinerary_ready||previousMenu!==data.menu_ready||previousSeating!==data.seating_ready)) connectLive();
   } catch (error) {
     if (epoch !== sessionEpoch) return;
     if (!api.session) { resetPrivateUI(); renderLogin('Session expired. Sign in again.'); }
@@ -157,15 +167,39 @@ function render() {
   document.body.classList.toggle('printing-menu',tab==='menu');
   const previousBoard=document.querySelector('.moodboard-frame');
   renderAccount();
-  const primary=tab==='menu'?(data.menu_ready?btn('menu-dish-new','+ Add dish','',''):''):tab==='itinerary'?(data.itinerary_ready?btn('itinerary-new','+ Add activity','',''):''):tab==='schedule'?btn('event-new','+ Add event','',''):tab==='moodboard'?btn('moodboard-edit','Link Pinterest board'):tab==='guests'?btn('household-new','+ Add household','',''):tab==='planning'?btn('task-new','+ Add task','',''):btn('expense-new','+ Add expense','','')+btn('payment-new','Record payment');
+  const primary=tab==='seating'?'':tab==='menu'?(data.menu_ready?btn('menu-dish-new','+ Add dish','',''):''):tab==='itinerary'?(data.itinerary_ready?btn('itinerary-new','+ Add activity','',''):''):tab==='schedule'?btn('event-new','+ Add event','',''):tab==='moodboard'?btn('moodboard-edit','Link Pinterest board'):tab==='guests'?btn('household-new','+ Add household','',''):tab==='planning'?btn('task-new','+ Add task','',''):btn('expense-new','+ Add expense','','')+btn('payment-new','Record payment');
   $('#main').innerHTML = `<section class="intro"><div><p class="eyebrow">BEN + MAYA · A DAY THAT’S OURS</p><h1>${esc(data.wedding.name)}</h1><p class="intro-note">A little planning. A lot of love.</p>${countdown(data.wedding.wedding_date,today())}<p class="wedding-meta">${data.wedding.wedding_date?esc(displayDate(data.wedding.wedding_date)):'Our date is still a beautiful possibility'}<span>·</span>${esc(data.wedding.currency)}</p></div><div class="actions">${primary}</div></section>
     <div class="section-head utility-bar"><small id="sync" class="sync-status">${esc(syncStatus)}</small><div class="actions">${api.pending?btn('retry','Retry pending save'):''}${btn('refresh','Refresh')}${btn('settings','Wedding settings')}${btn('export','Budget CSVs')}</div></div>
-    <nav class="planner-nav" aria-label="Planner sections">${[['budget','Budget','01'],['vendors','Vendors & quotes','02'],['guests','Guest list','03'],['planning','Our checklist','04'],['schedule','Schedule','05'],['moodboard','Mood board','06'],['itinerary','Day-of itinerary','07'],['menu','Our menu','08']].map(([id,label,number])=>`<button type="button" data-action="tab-${id}" class="secondary" aria-pressed="${tab===id}"><span aria-hidden="true">${number}</span>${label}</button>`).join('')}</nav>
-    ${tab==='budget'?renderBudget():tab==='vendors'?renderVendors():tab==='guests'?renderGuests(data,guestFilters):tab==='planning'?renderPlanning(data,taskFilter,today()):tab==='schedule'?renderSchedule(data,today(),scheduleFilter):tab==='itinerary'?renderItinerary(data,itineraryTrack):tab==='menu'?renderMenu(data,menuFilters):renderMoodboard(data)}`;
+    <nav class="planner-nav" id="planner-sections" aria-label="Planner sections">${plannerSections.map(([id,label],index)=>`<button type="button" data-action="tab-${id}" class="secondary" aria-pressed="${tab===id}"><span aria-hidden="true">${String(index+1).padStart(2,'0')}</span>${label}</button>`).join('')}</nav>
+    ${tab==='budget'?renderBudget():tab==='vendors'?renderVendors():tab==='guests'?renderGuests(data,guestFilters):tab==='planning'?renderPlanning(data,taskFilter,today()):tab==='schedule'?renderSchedule(data,today(),scheduleFilter):tab==='itinerary'?renderItinerary(data,itineraryTrack):tab==='menu'?renderMenu(data,menuFilters):tab==='seating'?renderSeating(data,seatingEvent,seatingUnit):renderMoodboard(data)}`;
+  updateBackToTop();
   const nextBoard=document.querySelector('.moodboard-frame');
   if(previousBoard&&nextBoard&&previousBoard.getAttribute('src')===nextBoard.getAttribute('src'))nextBoard.replaceWith(previousBoard);
   void loadPhotos();void loadMenuPhotos();
 }
+function showSeatingUnit(id) {
+  seatingUnit=id; render();
+  const heading=id?$('#unit-title'):$('#f-seating-unit');
+  heading?.focus();
+}
+function editSeating(action,id,event) {
+  if(action==='person' && data.seating_ready && !data.seating_units.some(u=>u.event===event)){
+    tab='seating'; seatingEvent=event; showSeatingUnit(''); return;
+  }
+  return seatingForm(action,id,{data,event,selectedId:tab==='seating'?seatingUnit:'',openForm,
+    save:(plan,expected,command)=>operation('rpc/change_seating',{w:weddingId,plan,expected,request_id:crypto.randomUUID(),command})});
+}
+function updateBackToTop() {
+  const nav=document.querySelector('.planner-nav');
+  $('#back-to-top').hidden=!nav || nav.getBoundingClientRect().bottom>0;
+}
+window.addEventListener('scroll',updateBackToTop,{passive:true});
+window.addEventListener('resize',updateBackToTop);
+$('#back-to-top').onclick=()=>{
+  const current=document.querySelector('.planner-nav [aria-pressed="true"]');
+  current?.focus({preventScroll:true});
+  $('#planner-sections')?.scrollIntoView({block:'start'});
+};
 function renderBudget() {
   const room = data.wedding.cap_cents - totals.forecast;
   const next = totals.upcoming[0];
@@ -314,10 +348,10 @@ function guestForm(id,invitationId) {
     +DIETARY_FLAGS.map(([key,label])=>checkbox(`diet_${key}`,label,guest?.dietary_flags?.includes(key))).join('')+'</fieldset>'
     +area('dietary_notes','Guest’s allergy or dietary request',guest?.dietary_notes||'')
     +area('caterer_confirmation','Caterer’s response / confirmation',guest?.caterer_confirmation||'')
-    +(data.menu_ready?input('meal_table','Caterer table label (optional)',guest?.meal_table||'','text','maxlength="100"')+'<p>Save guest details, then use Choose meals to record a dish for each course.</p>':''),f=>{
+    +(data.menu_ready&&!data.seating_ready?input('meal_table','Caterer table label (optional)',guest?.meal_table||'','text','maxlength="100"')+'<p>Save guest details, then use Choose meals to record a dish for each course.</p>':''),f=>{
       const name=f.name.trim()||null,is_companion=f.is_companion==='on';
       if(!name&&!is_companion)throw new Error('Enter a name or mark this guest as an unnamed companion.');
-      const record={...(data.menu_ready?{meal_table:f.meal_table.trim()}:{}),...(data.feedback_ready?{invited_by:f.invited_by||null}:{}),invitation_id:f.invitation_id,name,is_companion,rsvp:f.rsvp,tag:f.tag,gift_received:f.gift_received==='on',
+      const record={...(data.menu_ready&&!data.seating_ready?{meal_table:f.meal_table.trim()}:{}),...(data.feedback_ready?{invited_by:f.invited_by||null}:{}),invitation_id:f.invitation_id,name,is_companion,rsvp:f.rsvp,tag:f.tag,gift_received:f.gift_received==='on',
         dietary_flags:DIETARY_FLAGS.filter(([key])=>f[`diet_${key}`]==='on').map(([key])=>key),dietary_notes:f.dietary_notes,caterer_confirmation:f.caterer_confirmation};
       return guest?update('guests',guest,record):insert('guests',record);
     });
@@ -628,6 +662,11 @@ function exportCSVs() {
   notify('Exported expense and payment CSVs. Allow multiple downloads if your browser asks. Amounts are integer cents.');
 }
 const actions = {
+  'tab-seating':()=>{tab='seating';render();},
+  'seating-event':event=>{seatingEvent=event;showSeatingUnit('');},
+  'seating-open':showSeatingUnit,'seating-overview':()=>showSeatingUnit(''),
+  'guest-seating':id=>editSeating('person',id,'reception'),
+  ...Object.fromEntries(['add','edit','delete','number','assign','person','chair'].map(action=>['seating-'+action,id=>editSeating(action,id,seatingEvent)])),
   'tab-menu':()=>{tab='menu';render();},'menu-course-new':()=>menuCourseForm(),'menu-course-edit':menuCourseForm,
   'menu-dish-new':()=>menuDishForm(),'menu-dish-edit':menuDishForm,
   'menu-toggle':id=>changePlannerRecord('menu_options',id,{selected:!data.menu_options.find(o=>o.id===id).selected}),
@@ -682,13 +721,14 @@ document.addEventListener('click', async event => {
   } catch(error){notify(errorMessage(error),true); if(data)render();} finally{target.disabled=false;}
 });
 document.addEventListener('change',event => {
+  if(event.target.id==='f-seating-unit'&&event.target.value)showSeatingUnit(event.target.value);
   if(event.target.id==='comparison'){comparison=event.target.value;$('#bars').innerHTML=bars(comparison);}
   if(event.target.id==='f-menu-group'){menuFilters.group=event.target.value;render();}
   if(event.target.id==='f-menu-vendor'){menuFilters.vendor=event.target.value;render();}
   if(event.target.id==='f-schedule-filter'){scheduleFilter=event.target.value;render();}
   if(event.target.id==='f-itinerary-track'){itineraryTrack=event.target.value;render();}
   if(event.target.id==='f-category-filter'){selectedCategory=event.target.value;render();}
-  const guestSelects={'f-guest-rsvp':'rsvp','f-guest-tag':'tag','f-guest-view':'view'};
+  const guestSelects={'f-guest-rsvp':'rsvp','f-guest-tag':'tag','f-guest-table':'table','f-guest-view':'view'};
   if(guestSelects[event.target.id]){guestFilters[guestSelects[event.target.id]]=event.target.value;render();}
 });
 document.addEventListener('input',event=>{

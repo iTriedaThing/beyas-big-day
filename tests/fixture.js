@@ -44,6 +44,15 @@ export function installMock() {
     {id:'morgan-guest',invitation_id:'morgan',name:'Morgan Chen',rsvp:'yes',tag:'Family',dietary_flags:['vegetarian']},
     {id:'jules',invitation_id:'morgan',name:'Jules Chen',rsvp:'no',tag:'Family',dietary_flags:[]},
   ].map(g=>({wedding_id:w,is_companion:false,gift_received:false,dietary_notes:'',caterer_confirmation:'',archived:false,version:1,...g}));
+  fixture.seating_ready=true;
+  fixture.seating_units=[
+    {id:'head',event:'reception',label:'Head table',shape:'rectangle',capacity:6,position:1},
+    {id:'garden',event:'reception',label:'Garden table',shape:'round',capacity:8,position:2},
+    {id:'family',event:'ceremony',label:'Family row',shape:'row',capacity:10,position:1,reserved:true}
+  ];
+  fixture.seating_placements=[{event:'reception',unit_id:'head',guest_id:'morgan-guest',seat:1}];
+  fixture.seating_revisions={};
+  const seatingReceipts=new Set();
   fixture.tasks=[
     {id:'vision',starter_key:'vision',title:'Talk about the celebration you both want',planning_window:'12_plus',completed:true},
     {id:'budget-task',starter_key:'budget',title:'Agree on a wedding budget',planning_window:'12_plus',completed:true},
@@ -69,8 +78,16 @@ export function installMock() {
     const path=String(url).split('/rest/v1/')[1];
     if(path.startsWith('weddings?')&&(!options.method||options.method==='GET'))return Response.json([fixture.wedding]);
     if(path==='rpc/budget_snapshot'){
+      fixture.seating_placements=fixture.seating_placements.filter(p=>{
+        const g=fixture.guests.find(g=>g.id===p.guest_id), h=fixture.invitations.find(h=>h.id===g?.invitation_id);
+        return g && h && !g.deleted && !h.deleted && !g.archived && !h.archived && g.rsvp!=='no';
+      });
       const snapshot=structuredClone(fixture);
       for(const key of ['categories','vendors','expenses','quotes','installments','payments','invitations','guests','tasks','events','vendor_photos','itinerary_items','menu_courses','menu_options','guest_meals'])snapshot[key]=snapshot[key].filter(r=>!r.deleted);
+      for(const g of snapshot.guests){
+        const p=snapshot.seating_placements.find(p=>p.event==='reception' && p.guest_id===g.id);
+        g.meal_table=snapshot.seating_units.find(u=>u.id===p?.unit_id)?.label || '';
+      }
       snapshot.menu_options=snapshot.menu_options.filter(o=>snapshot.menu_courses.some(c=>c.id===o.course_id));
       snapshot.menu_estimate=menuEstimate(snapshot);
       snapshot.expenses=snapshot.expenses.map(e=>e.id===snapshot.wedding.menu_expense_id?{...e,menu_linked:true,menu_estimate_cents:snapshot.menu_estimate.cents}:e);
@@ -78,6 +95,51 @@ export function installMock() {
       return Response.json(snapshot);
     }
     if(path.startsWith('record_history?'))return Response.json(fixture.record_history.filter(h=>h.record_id===new URLSearchParams(path.split('?')[1]).get('record_id')?.slice(3)));
+    if(path==='rpc/change_seating'){
+      const {plan:event,expected,command:c,request_id}=body;
+      const reject=message=>Response.json({message},{status:400});
+      if(seatingReceipts.has(request_id))return Response.json(null);
+      if(expected!==(fixture.seating_revisions[event]||0))return reject('Refresh and reopen the plan.');
+      const units=fixture.seating_units.filter(u=>u.event===event).sort((a,b)=>a.position-b.position);
+      const unit=units.find(u=>u.id===c.unit_id);
+      const placements=fixture.seating_placements;
+      const atUnit=placements.filter(p=>p.unit_id===c.unit_id);
+      if(c.action==='add'){
+        let suffix=units.length+1;
+        for(let i=0;i<c.quantity;i++){
+          let label;
+          do {label=(event==='ceremony'?'Row ':'Table ')+suffix++;} while(fixture.seating_units.some(u=>u.event===event && u.label===label));
+          fixture.seating_units.push({id:crypto.randomUUID(),event,label,capacity:c.capacity,position:units.length+i+1,shape:c.shape,reserved:c.reserved});
+        }
+      }else if(c.action==='edit'||c.action==='delete'){
+        if(!unit)return reject('Table or row unavailable.');
+        const others=units.filter(u=>u!==unit);
+        if(c.action==='edit'){
+          if(atUnit.length>c.capacity || atUnit.some(p=>p.seat>c.capacity))return reject('Move guests before reducing capacity.');
+          Object.assign(unit,{label:c.label,shape:c.shape,capacity:c.capacity,reserved:c.reserved});
+          others.splice(c.position-1,0,unit);
+        }else{
+          fixture.seating_units=fixture.seating_units.filter(u=>u!==unit);
+          fixture.seating_placements=placements.filter(p=>p.unit_id!==unit.id);
+        }
+        others.forEach((u,i)=>u.position=i+1);
+      }else if(c.action==='number'){
+        const p=atUnit.find(p=>p.guest_id===c.guest_id);
+        if(!p || (c.seat && atUnit.some(other=>other!==p && other.seat===c.seat)))return reject('Choose an available seat.');
+        p.seat=c.seat;
+      }else if(c.action==='assign'){
+        const members=fixture.guests.filter(g=>g.invitation_id===c.household_id && !g.archived && !g.deleted && g.rsvp!=='no' && (!c.split||g.id===c.guest_id));
+        const ids=new Set(members.map(g=>g.id));
+        if(unit && atUnit.filter(p=>!ids.has(p.guest_id)).length+ids.size>unit.capacity)return reject('This group needs more open seats.');
+        if(c.seat && atUnit.some(p=>p.seat===c.seat && p.guest_id!==c.number_guest_id))return reject('Choose an available seat.');
+        fixture.seating_placements=placements.filter(p=>p.event!==event || !ids.has(p.guest_id) || p.unit_id===unit?.id);
+        if(unit)for(const id of ids)if(!atUnit.some(p=>p.guest_id===id))fixture.seating_placements.push({event,unit_id:unit.id,guest_id:id,seat:null});
+        if(c.seat)fixture.seating_placements.find(p=>p.event===event && p.guest_id===c.number_guest_id).seat=c.seat;
+      }
+      fixture.seating_revisions[event]=expected+1;
+      seatingReceipts.add(request_id);
+      return Response.json(null);
+    }
     if(path==='rpc/delete_record'){
       const record=fixture[body.t].find(r=>r.id===body.r);
       if(!record||record.version!==body.v)return Response.json({message:'Someone changed this record. Refresh and review.'},{status:409});
