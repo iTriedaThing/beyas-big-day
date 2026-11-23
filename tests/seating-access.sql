@@ -12,7 +12,7 @@ select i.wedding_id,i.id,g.id::uuid,g.name,g.rsvp,g.name is null,g.label from pu
  ('30000000-0000-0000-0000-000000000002',null,'pending','Head table'),
  ('30000000-0000-0000-0000-000000000003','Declined','no','Old table')) g(id,name,rsvp,label);
 
-\ir ../supabase/migrations/20261123145047_visual_seating.sql
+\ir ../supabase/migrations/20261123234251_visual_seating.sql
 
 create function pg_temp.assert(ok boolean, label text) returns void language plpgsql as $$
 begin if ok is distinct from true then raise exception 'FAIL %',label; end if; end $$;
