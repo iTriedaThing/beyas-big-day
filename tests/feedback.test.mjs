@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {webURL,websiteLink,pinterestBoard,timeZones,countdown,scheduleEntries,renderSchedule,renderMoodboard,validatePhoto} from '../docs/features.js';
+import {webURL,websiteLink,pinterestBoard,timeZones,countdown,scheduleEntries,upcomingVendorTours,renderSchedule,renderMoodboard,validatePhoto} from '../docs/features.js';
 
 test('vendor links reject executable protocols and escape labels',()=>{
   for(const url of ['javascript:alert(1)','data:text/html,x','https://user:password@example.com','not a url'])assert.equal(webURL(url),'');
@@ -34,6 +34,17 @@ test('agenda merges dated tasks, events, and only outstanding installments once,
 test('mood board uses an isolated preview and retains an accessible fallback',()=>{
   const html=renderMoodboard({wedding:{pinterest_board_url:'https://www.pinterest.com/u/b/'}});
   assert.match(html,/<iframe/);assert.ok(!html.includes('allow-same-origin'));assert.match(html,/Open board on Pinterest/);
+});
+test('vendor cards include only linked upcoming tours in agenda order, including all-day tours today',()=>{
+  const tour={kind:'Tour',title:'Visit',vendor_id:'venue',event_date:'2026-11-23'};
+  const events=[
+    {...tour,id:'tomorrow',event_date:'2026-11-24'}, {...tour,id:'afternoon',start_time:'15:00:00'},
+    {...tour,id:'all-day',start_time:null}, {...tour,id:'morning',start_time:'09:30:00'},
+    {...tour,kind:'Tasting'}, {...tour,vendor_id:null}, {...tour,completed:true},
+    {...tour,deleted:true}, {...tour,event_date:'2026-11-22'}
+  ];
+  assert.deepEqual(upcomingVendorTours(events,'2026-11-23').map(e=>[e.id,e.time]),
+    [['all-day',''],['morning','09:30'],['afternoon','15:00'],['tomorrow','']]);
 });
 test('Pinterest bootstrap and JSONP scripts are allowed only inside the isolated preview',()=>{
   const policy=file=>readFileSync(new URL(file,import.meta.url),'utf8').match(/content="(default-src[^"\n]+)"/)[1];

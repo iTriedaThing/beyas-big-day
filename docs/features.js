@@ -23,11 +23,19 @@ export function countdown(date,today) {
   return `<div class="intro-countdown" aria-label="Wedding countdown"><strong>${days===null?'Date to come':days===0?'Today is our day!':`${Math.abs(days)} ${Math.abs(days)===1?'day':'days'} ${days<0?'married':'to go'}`}</strong>${btn('settings','Edit date','','text-button')}</div>`;
 }
 export const attributionOptions=members=>[['','Together / unspecified'],...members.map(m=>[m.user_id,m.display_name])];
+function calendarEvents(events = []) {
+  return events.map(e=>({...e,type:e.kind,source:'event',date:e.event_date,time:e.start_time?.slice(0,5)||''}));
+}
+const chronological = (a,b) => a.date.localeCompare(b.date)||a.time.localeCompare(b.time)||a.title.localeCompare(b.title);
+
+export function upcomingVendorTours(events,today) {
+  return calendarEvents(events).filter(e=>e.type==='Tour' && e.vendor_id && !e.completed && !e.deleted && e.date>=today).sort(chronological);
+}
 export function scheduleEntries(data) {
-  const events=(data.events||[]).map(e=>({...e,type:e.kind,source:'event',date:e.event_date,time:e.start_time?.slice(0,5)||''}));
+  const events=calendarEvents(data.events);
   const tasks=(data.tasks||[]).filter(t=>!t.archived&&!t.completed).map(t=>({...t,type:'Task',source:'task',date:taskDueDate(t,data.wedding.wedding_date),time:''})).filter(t=>t.date);
   const installments=(data.installments||[]).map(i=>({...i,remaining:installmentBalance(i,data.payments)})).filter(i=>i.remaining>0).map(i=>({...i,title:`${i.label} · ${data.expenses.find(e=>e.id===i.expense_id)?.title||'Expense'}`,type:'Payment due',source:'installment',date:i.due_date,time:''}));
-  return [...events,...tasks,...installments].sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time)||a.title.localeCompare(b.title));
+  return [...events,...tasks,...installments].sort(chronological);
 }
 export function renderSchedule(data,today,filter='upcoming') {
   if(!data.feedback_ready)return '<section class="panel"><h2>Schedule is being prepared</h2><p>Your existing planner is ready to use.</p></section>';

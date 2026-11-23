@@ -68,6 +68,14 @@ test('feedback flows render and save through the app; Forecast survives polling 
   await click('tab-schedule');assert.match(el('main').innerHTML,/Garden venue tour/);
   await click('event-new');await submit({title:'Cake tasting',kind:'Tasting',event_date:'2027-01-05',start_time:'14:30',location:'Sample bakery',vendor_id:'vendor',notes:'Bring questions'});
   assert.match(el('main').innerHTML,/Cake tasting/);assert.match(el('main').innerHTML,/14:30/);
+  const tour={title:'Walk through <Atrium>',kind:'Tour',event_date:'2099-05-01',start_time:'11:45',location:'North & South entrance',vendor_id:'vendor',notes:''};
+  await click('event-new');await submit(tour);
+  const scheduledId=el('main').innerHTML.match(/Walk through &lt;Atrium&gt;[\s\S]*?data-action="event-edit" data-id="([^"]+)"/)[1];
+  await click('tab-vendors');
+  assert.match(el('main').innerHTML,/overall rating[\s\S]*?Scheduled tours[\s\S]*?Walk through &lt;Atrium&gt;[\s\S]*?2099-05-01[\s\S]*?11:45 · North &amp; South entrance[\s\S]*?menu dishes/);
+  assert.doesNotMatch(el('main').innerHTML,/Cake tasting/);
+  await click('tab-schedule');await click('event-edit',scheduledId);await submit({...tour,vendor_id:''});
+  await click('tab-vendors');assert.doesNotMatch(el('main').innerHTML,/Atrium/);
   await click('tab-moodboard');await click('moodboard-edit');await submit({url:'https://www.pinterest.com/example/wedding/'});
   assert.match(el('main').innerHTML,/<iframe class="moodboard-frame"/);
   await click('tab-itinerary');assert.match(el('main').innerHTML,/Day-of itinerary/);assert.match(el('main').innerHTML,/Ben gets ready/);assert.match(el('main').innerHTML,/Maya gets ready/);
