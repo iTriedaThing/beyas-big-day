@@ -1,3 +1,4 @@
+import {prepareGuestImport,maxFileBytes} from './guest-import.js';
 import {renderSeating} from './seating.js';
 import {seatingForm} from './seating-editor.js';
 import { config } from './config.js';
@@ -430,6 +431,50 @@ async function changePlannerRecord(table,id,fields) {
   const record=data[table].find(r=>r.id===id);if(!record)throw new Error('This record changed. Refresh and try again.');
   await update(table,record,fields);await reload();
 }
+function importGuests() {
+  if (!data.guest_import_ready) throw new Error('The guest import database update is required.');
+  if (api.pending) throw new Error('Retry the pending save before starting an import.');
+  const w=weddingId, requestId=crypto.randomUUID();
+  let preview=null;
+  openForm('Import guest list',
+    '<a href="./guest-list-template.csv" download>Download the blank CSV template</a>'+
+    '<p>Use one row per person. Repeat the household name for people sharing an invitation. For an unnamed plus-one, leave guest_name blank and enter yes in companion.</p>'+
+    '<p>Email, phone and address are shared by the household. RSVP accepts yes, no or pending. Blank replies start as pending. Save as comma-separated CSV UTF-8, up to 1 MiB and 1,000 people.</p>'+
+    input('guest-file','Guest CSV','','file','accept=".csv,text/csv" required')+
+    '<div id="import-preview" role="status" class="preline"></div>',
+    async ()=>{
+      if (!preview) throw new Error('Select a valid CSV and review the guest list first.');
+      fileInput.disabled=true;
+      try { await operation('rpc/import_guest_csv',{w,request_id:requestId,households:preview.households}); }
+      finally { fileInput.disabled=!!api.pending; }
+    });
+  const fileInput=$('#f-guest-file'), result=$('#import-preview'), save=$('#save');
+  save.disabled=true; save.textContent='Import guests';
+  fileInput.onchange=async ()=>{
+    const file=fileInput.files[0];
+    preview=null; save.disabled=true; $('#form-error').textContent='';
+    result.textContent=file?'Checking the guest list…':'Choose a CSV file.';
+    if (!file) return;
+    const current=()=>fileInput.isConnected && dialog.open && file===fileInput.files[0];
+    try {
+      if (!/\.csv$/i.test(file.name)) throw new Error('Choose a .csv file. In Excel, save a copy as CSV UTF-8 (comma delimited).');
+      if (file.size>maxFileBytes) throw new Error('The file exceeds 1 MiB. Split it into smaller files, keeping households together.');
+      let bytes;
+      try { bytes=await file.arrayBuffer(); }
+      catch { throw new Error('The browser could not read the selected file. Save a local copy, then select it again.'); }
+      if (!current()) return;
+      let source;
+      try { source=new TextDecoder('utf-8',{fatal:true}).decode(bytes); }
+      catch { throw new Error('The file could not be read as UTF-8. Save it again as CSV UTF-8.'); }
+      preview=prepareGuestImport(source,data.invitations);
+      const {guestCount,households}=preview;
+      result.innerHTML=`<p>Ready to add <strong>${guestCount} ${guestCount===1?'guest':'guests'}</strong> across <strong>${households.length} ${households.length===1?'household':'households'}</strong>.</p><details><summary>Review names by household</summary><ul>${households.map(h=>`<li><strong>${esc(h.household)}</strong> · ${h.people.map(g=>esc(g.name||'Unnamed companion')).join(', ')}</li>`).join('')}</ul></details>`;
+      save.disabled=false;
+    } catch(error) {
+      if (current()) { result.textContent='Nothing imported. '+error.message; fileInput.value=''; }
+    }
+  };
+}
 function exportGuests() {
   const rows=guestSummary(data.invitations,data.guests).active.map(g=>{
     const i=data.invitations.find(i=>i.id===g.invitation_id);
@@ -752,7 +797,7 @@ const actions = {
   'guest-new':invitationId=>guestForm('',invitationId),'guest-edit':id=>guestForm(id),
   'guest-rsvp':(id,rsvp)=>changePlannerRecord('guests',id,{rsvp}),
   'guest-archive':id=>changePlannerRecord('guests',id,{archived:!data.guests.find(g=>g.id===id).archived}),
-  'guests-export':exportGuests,'task-new':()=>taskForm(),'task-edit':taskForm,'tasks-seed':seedTasks,
+  'guests-import':importGuests,'guests-export':exportGuests,'task-new':()=>taskForm(),'task-edit':taskForm,'tasks-seed':seedTasks,
   'task-toggle':id=>changePlannerRecord('tasks',id,{completed:!data.tasks.find(t=>t.id===id).completed}),
   'task-archive':id=>changePlannerRecord('tasks',id,{archived:!data.tasks.find(t=>t.id===id).archived}),
   'task-filter':id=>{taskFilter=id;render();},
@@ -802,7 +847,7 @@ document.addEventListener('input',event=>{
   $('#f-guest-search').focus();$('#f-guest-search').setSelectionRange(cursor,cursor);
 });
 $('#cancel').onclick = () => dialog.close();
-dialog.addEventListener('cancel',event => {if($('#save').disabled)event.preventDefault();});
+dialog.addEventListener('cancel',event => {if($('#cancel').disabled)event.preventDefault();});
 window.addEventListener('focus',() => {if(api?.session && !api.session.recovery && !handlingAuthRedirect) void (data ? reload() : start());});
 window.addEventListener('online',() => {if(api?.session && !api.session.recovery && !handlingAuthRedirect) void (data ? reload() : start());});
 window.addEventListener('hashchange',() => {
