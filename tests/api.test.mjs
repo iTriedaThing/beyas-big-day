@@ -72,11 +72,11 @@ test('stale optimistic update requires review instead of overwriting',async()=>{
   await assert.rejects(api.mutate({path:'expenses?id=eq.e&version=eq.1',options:{method:'PATCH',body:{version:1}}}),/Someone changed/);
   assert.equal(api.pending,null);
 });
-test('definite validation failures clear pending state; server failures retain it',async()=>{
-  for(const status of [400,403,500]){
+test('validation failures clear pending state and temporary failures retain it',async()=>{
+  for(const status of [400,403,408,429,500]){
     const api=new Api(config,storage(),async()=>Response.json({message:'denied'},{status}));api.setSession(session);
     await assert.rejects(api.mutate({path:'payments',options:{method:'POST',body:{}}}));
-    assert.equal(!!api.pending,status===500);
+    assert.equal(!!api.pending,[408,429,500].includes(status));
   }
 });
 test('concurrent expired requests share one refresh',async()=>{
@@ -97,4 +97,57 @@ test('refresh completing after sign-out cannot restore the old session',async()=
   const refreshing=api.refresh();api.setSession(null);
   finish(Response.json({...session,expires_in:3600}));await refreshing;
   assert.equal(api.session,null);
+});
+
+test('refresh errors preserve the original pending save for its account', async () => {
+  const operation = {path: 'expenses', options: {method: 'POST', body: {id: 'original'}}};
+  for (const status of [400, 409, 429]) {
+    const api = new Api(config, storage(), async url => {
+      assert.ok(url.includes('/auth/'));
+      return Response.json({message: 'Refresh failed'}, {status});
+    });
+    api.setSession({...session, expires_at: 1});
+    await assert.rejects(api.mutate(operation), /Refresh failed/);
+    assert.equal(!!api.session, status !== 400);
+    api.setSession(session);
+    assert.deepEqual(api.pending, operation);
+  }
+});
+
+test('late unauthorized responses reuse the token already renewed by another request', async () => {
+  let refreshes = 0;
+  const firstResponse = Promise.withResolvers();
+  const api = new Api(config, storage(), async (url, options) => {
+    if (url.includes('/auth/')) {
+      refreshes++;
+      return Response.json({...session, access_token: 'renewed', expires_in: 3600});
+    }
+    if (options.headers.Authorization === 'Bearer test-token') {
+      return url.includes('/storage/') ? firstResponse.promise : new Response(null, {status: 401});
+    }
+    return url.includes('/storage/') ? new Response('image') : Response.json([]);
+  });
+  api.setSession(session);
+  const photo = api.photo('w/v/image.png');
+  await api.request('expenses');
+  firstResponse.resolve(new Response(null, {status: 401}));
+  assert.equal(await (await photo).text(), 'image');
+  assert.equal(refreshes, 1);
+});
+
+test('retrying while a save is in flight shares its confirmation', async () => {
+  const response = Promise.withResolvers();
+  let submissions = 0;
+  const api = new Api(config, storage(), async () => {
+    submissions++;
+    return response.promise;
+  });
+  api.setSession(session);
+  const saving = api.mutate({path: 'expenses', options: {method: 'POST', body: {id: 'first'}}});
+  const retrying = api.retryPending();
+  response.resolve(Response.json({id: 'first'}));
+  const [original, retry] = await Promise.all([saving, retrying]);
+  assert.equal(submissions, 1);
+  assert.deepEqual(retry, original);
+  assert.equal(api.pending, null);
 });

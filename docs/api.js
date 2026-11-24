@@ -1,5 +1,9 @@
 const RESET_LINK_ERROR = 'This sign-in or reset link is invalid or expired. Request a new password reset email.';
 
+function isClientRejection(status) {
+  return status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
+
 // Consume secrets immediately; budget anchors such as #expenses are left alone.
 export function takeAuthRedirect(location, history) {
   const url = new URL(location.href);
@@ -23,6 +27,7 @@ export class Api {
     this.fetcher = fetcher;
     this.prefix = `wedding:${this.url}:`;
     this.session = JSON.parse(storage.getItem(this.prefix + 'session') || 'null');
+    this.pendingRequests = new Map();
   }
   setSession(session) {
     this.session = session;
@@ -40,7 +45,7 @@ export class Api {
     const result = await res.json().catch(() => ({}));
     if (!res.ok) {
       const error = new Error(result.msg || result.error_description || result.message || 'Sign-in request failed.');
-      error.definite = res.status >= 400 && res.status < 500;
+      error.status = res.status;
       throw error;
     }
     return result;
@@ -64,7 +69,7 @@ export class Api {
     let user;
     try { user = await this.auth('user', undefined, { method: 'GET', accessToken }); }
     catch (error) {
-      if (error.definite) throw new Error(RESET_LINK_ERROR);
+      if (isClientRejection(error.status)) throw new Error(RESET_LINK_ERROR);
       throw new Error('Could not verify the email link. Check your connection and reopen the link.');
     }
     if (!user?.id) throw new Error(RESET_LINK_ERROR);
@@ -73,20 +78,24 @@ export class Api {
   }
   async updatePassword(password) {
     if (!this.session) throw new Error('Open a fresh password reset link before choosing a password.');
+    const userId = this.session.user.id;
     if (this.session.expires_at < Date.now() / 1000 + 60) await this.refresh();
-    const accessToken = this.session.access_token;
+    const accessToken = this.#accessTokenFor(userId);
     const user = await this.auth('user', { password }, { method: 'PUT', accessToken });
     if (this.session?.access_token === accessToken) this.setSession({ ...this.session, user, recovery: false });
   }
   async refresh() {
+    if (!this.session) throw new Error('Sign in to continue.');
     if (!this.refreshing) this.refreshing = (async () => {
       const originalToken = this.session?.refresh_token;
       try {
         const s = await this.auth('token?grant_type=refresh_token', { refresh_token: originalToken });
         if (this.session?.refresh_token === originalToken) this.setSession({ ...s, recovery: !!this.session.recovery, expires_at: Math.floor(Date.now() / 1000) + s.expires_in });
       } catch (error) {
-        // Keep the session on network failures; a later reconnect can still refresh it.
-        if (error.definite && this.session?.refresh_token === originalToken) this.setSession(null);
+        // Auth can report a conflict when another client is renewing the same session.
+        if (isClientRejection(error.status) && error.status !== 409 && this.session?.refresh_token === originalToken) {
+          this.setSession(null);
+        }
         throw error;
       } finally { this.refreshing = null; }
     })();
@@ -95,18 +104,35 @@ export class Api {
   async signOut() {
     try { await this.auth('logout', {}); } finally { this.setSession(null); }
   }
-  async request(path, { method = 'GET', body, prefer = 'return=representation', retry = true } = {}) {
+  #accessTokenFor(userId) {
+    if (this.session?.user.id !== userId) throw new Error('The signed-in account changed. Reopen the planner and try again.');
+    return this.session.access_token;
+  }
+  async #authenticatedFetch(path, options, {retry, timeoutMs}) {
     if (!this.session) throw new Error('Sign in to continue.');
-    if (this.session.expires_at < Date.now() / 1000 + 60) await this.refresh();
-    const res = await this.fetcher(`${this.url}/rest/v1/${path}`, {
-      method, signal: AbortSignal.timeout(20000), headers: { apikey: this.key, Authorization: `Bearer ${this.session.access_token}`,
-        'Content-Type': 'application/json', Prefer: prefer }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    const userId = this.session.user.id;
+    const send = token => this.fetcher(this.url + path, {
+      ...options,
+      headers: {...options.headers, apikey: this.key, Authorization: `Bearer ${token}`},
+      signal: AbortSignal.timeout(timeoutMs),
     });
-    if (res.status === 401 && retry) { await this.refresh(); return this.request(path, { method, body, prefer, retry: false }); }
+    if (this.session.expires_at < Date.now() / 1000 + 60) await this.refresh();
+    const token = this.#accessTokenFor(userId);
+    const res = await send(token);
+    if (res.status !== 401 || !retry) return res;
+    // A concurrent request may have renewed the token while this one was in flight.
+    if (this.#accessTokenFor(userId) === token) await this.refresh();
+    return send(this.#accessTokenFor(userId));
+  }
+  async request(path, { method = 'GET', body, prefer = 'return=representation', retry = true } = {}) {
+    const res = await this.#authenticatedFetch(`/rest/v1/${path}`, {
+      method, headers: {'Content-Type': 'application/json', Prefer: prefer}, body: JSON.stringify(body),
+    }, {retry, timeoutMs: 20000});
     const result = await res.json().catch(() => null);
     if (!res.ok) {
       const error = new Error(result?.message || `Request failed (${res.status}).`);
-      error.definite = res.status >= 400 && res.status < 500;
+      // Only a rejection from the data endpoint can discard a saved operation.
+      error.discardPending = isClientRejection(res.status) && res.status !== 401;
       throw error;
     }
     return result;
@@ -114,37 +140,47 @@ export class Api {
   get pendingKey() { return this.prefix + 'pending:' + this.session?.user.id; }
   get pending() { return JSON.parse(this.storage.getItem(this.pendingKey) || 'null'); }
   async mutate(operation) {
+    if (!this.session) throw new Error('Sign in to continue.');
     if (this.pending) throw new Error('Resolve the pending save with “Retry pending save” first.');
     this.storage.setItem(this.pendingKey, JSON.stringify(operation));
     return this.retryPending();
   }
   async retryPending() {
     const key = this.pendingKey;
+    if (this.pendingRequests.has(key)) return this.pendingRequests.get(key);
     const op = this.pending;
     if (!op) return;
+    const request = this.#submitPending(key, op);
+    this.pendingRequests.set(key, request);
+    return request;
+  }
+  async #submitPending(key, op) {
     try {
       const result = await this.request(op.path, op.options);
       this.storage.removeItem(key);
       if (op.options.method === 'PATCH' && result.length === 0) throw new Error('Someone changed this record. Reopen it and review the latest values.');
       return result;
     } catch (error) {
-      if (error.definite) this.storage.removeItem(key);
+      if (error.discardPending) this.storage.removeItem(key);
       throw error;
+    } finally {
+      this.pendingRequests.delete(key);
     }
   }
   async snapshot(wedding) { return this.request('rpc/budget_snapshot', { method: 'POST', body: { w: wedding } }); }
-  async photo(path, {file,retry=true,bucket='vendor-photos'}={}) {
-    if(!['vendor-photos','menu-photos'].includes(bucket))throw new Error('Unsupported photo bucket.');
-    if(!this.session)throw new Error('Sign in to continue.');
-    if(this.session.expires_at<Date.now()/1000+60)await this.refresh();
-    const res=await this.fetcher(`${this.url}/storage/v1/object/${file?'':'authenticated/'}${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`,{
-      method:file?'POST':'GET',signal:AbortSignal.timeout(30000),
-      headers:{apikey:this.key,Authorization:`Bearer ${this.session.access_token}`,...(file?{'Content-Type':file.type,'x-upsert':'true'}:{})},
-      ...(file?{body:file}:{})
-    });
-    if(res.status===401&&retry){await this.refresh();return this.photo(path,{file,retry:false,bucket});}
-    if(!res.ok){const error=await res.json().catch(()=>null);throw new Error(error?.message||'Photo could not be loaded or uploaded. Try again.');}
-    return file?res.json():res.blob();
+  async photo(path, {file, retry = true, bucket = 'vendor-photos'} = {}) {
+    if (!['vendor-photos', 'menu-photos'].includes(bucket)) throw new Error('Unsupported photo bucket.');
+    const objectPath = path.split('/').map(encodeURIComponent).join('/');
+    const endpoint = `/storage/v1/object/${file ? '' : 'authenticated/'}${bucket}/${objectPath}`;
+    const options = file
+      ? {method: 'POST', headers: {'Content-Type': file.type, 'x-upsert': 'true'}, body: file}
+      : {method: 'GET'};
+    const res = await this.#authenticatedFetch(endpoint, options, {retry, timeoutMs: 30000});
+    if (!res.ok) {
+      const error = await res.json().catch(() => null);
+      throw new Error(error?.message || 'Photo could not be loaded or uploaded. Try again.');
+    }
+    return file ? res.json() : res.blob();
   }
 }
 
