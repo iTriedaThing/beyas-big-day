@@ -58,6 +58,7 @@ export function taskDueDate(task, weddingDate) {
   if (!window) return null;
   const date = utcDate(weddingDate);
   if (window.months !== undefined) {
+    // Set the month from day one, then clamp March 31 and similar dates to the target month's end.
     const day = date.getUTCDate();
     date.setUTCDate(1); date.setUTCMonth(date.getUTCMonth()+window.months);
     const lastDay = new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+1,0)).getUTCDate();
@@ -75,7 +76,7 @@ export function guestSummary(invitations = [], guests = []) {
     saveDatesSent:activeHouseholds.filter(i => i.save_the_date_sent_on).length,
     invitationsSent:activeHouseholds.filter(i => i.invitation_sent_on).length,
     gifts:active.filter(g => g.gift_received).length,
-    dietary:DIETARY_FLAGS.map(([id,label])=>({id,label,count:yes.filter(g=>new Set(g.dietary_flags || []).has(id)).length})),
+    dietary:DIETARY_FLAGS.map(([id,label])=>({id,label,count:yes.filter(g=>g.dietary_flags?.includes(id)).length})),
     dietaryGuests:yes.filter(g=>(g.dietary_flags || []).length || g.dietary_notes?.trim()).length};
 }
 export function taskSummary(tasks = [], weddingDate, today) {
