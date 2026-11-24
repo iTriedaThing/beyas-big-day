@@ -5,6 +5,7 @@ import { Api, subscribe, takeAuthRedirect } from './api.js';
 import { cents, money, quoteTotal, summarize, installmentBalance, csv, localDate } from './budget.js';
 import {escapeHTML as esc,button as btn,input,textarea as area,select} from './ui.js';
 import {setupEditor} from './editor.js';
+import {createPhotoCache} from './photo-cache.js';
 import {TASK_WINDOWS,DIETARY_FLAGS,GUEST_TAGS,STARTER_TASKS,householdGuests,guestSummary} from './planner.js';
 import {renderGuests,renderPlanning,plannerOverview,displayDate} from './planner-views.js';
 import {websiteLink,timeZones,countdown,attributionOptions,renderSchedule,upcomingVendorTours,renderMoodboard,pinterestBoard,validatePhoto} from './features.js';
@@ -18,19 +19,41 @@ const dialog = $('#editor');
 const editor = setupEditor(dialog, $('#editor-body'));
 let api, data, totals, weddingId, tab = 'budget', selectedExpense = '', selectedCategory = '', stopLive, loading = false, loadAgain = false, syncStatus = 'Connecting…', noticeTimer;
 let sessionEpoch = 0, handlingAuthRedirect = false;
-const guestFilters = {search:'',rsvp:'',tag:'',view:'active'};
+let guestFilters, menuFilters;
 let taskFilter = 'all', comparison = 'paid', scheduleFilter = 'upcoming', itineraryTrack='';
 let seatingEvent='reception', seatingUnit='';
-const plannerSections = [
-  ['budget','Budget'], ['vendors','Vendors & quotes'], ['guests','Guest list'],
-  ['planning','Our checklist'], ['schedule','Schedule'], ['moodboard','Mood board'],
-  ['itinerary','Day-of itinerary'], ['menu','Our menu'], ['seating','Seating chart']
-];
-const menuFilters={group:'course',vendor:'',search:''};
-const menuPhotoURLs=new Map();
-const menuPhotoLoads=new Map();
-const photoURLs = new Map();
-const photoLoads = new Map();
+const budgetActions = () => btn('expense-new','+ Add expense','','') + btn('payment-new','Record payment');
+const plannerSections = {
+  budget: {label:'Budget', render:renderBudget, primary:budgetActions},
+  vendors: {label:'Vendors & quotes', render:renderVendors, primary:budgetActions},
+  guests: {
+    label:'Guest list', render:() => renderGuests(data,guestFilters),
+    primary:() => btn('household-new','+ Add household','','')
+  },
+  planning: {
+    label:'Our checklist', render:() => renderPlanning(data,taskFilter,today()),
+    primary:() => btn('task-new','+ Add task','','')
+  },
+  schedule: {
+    label:'Schedule', render:() => renderSchedule(data,today(),scheduleFilter),
+    primary:() => btn('event-new','+ Add event','','')
+  },
+  moodboard: {
+    label:'Mood board', render:() => renderMoodboard(data),
+    primary:() => btn('moodboard-edit','Link Pinterest board')
+  },
+  itinerary: {
+    label:'Day-of itinerary', render:() => renderItinerary(data,itineraryTrack),
+    primary:() => data.itinerary_ready ? btn('itinerary-new','+ Add activity','','') : ''
+  },
+  menu: {
+    label:'Our menu', render:() => renderMenu(data,menuFilters),
+    primary:() => data.menu_ready ? btn('menu-dish-new','+ Add dish','','') : ''
+  },
+  seating: {label:'Seating chart', render:() => renderSeating(data,seatingEvent,seatingUnit)}
+};
+const menuPhotos = createPhotoCache(path => api.photo(path,{bucket:'menu-photos'}));
+const vendorPhotoCache = createPhotoCache(path => api.photo(path));
 const fmt = value => money(value, data.wedding.currency);
 const vendorName = id => data.vendors.find(v => v.id === id)?.name || 'No vendor linked';
 const memberName = id => data.members.find(m => m.user_id === id)?.display_name || id;
@@ -45,14 +68,20 @@ function errorMessage(error) {
   return `${error.message}${api?.pending ? ' The outcome is unconfirmed. Retry the original save; its IDs are preserved in this tab.' : ''}`;
 }
 function resetPrivateUI() {
+  tab='budget'; selectedExpense=''; selectedCategory=''; itineraryTrack='';
+  guestFilters={search:'',rsvp:'',tag:'',table:'',view:'active'};
+  menuFilters={group:'course',vendor:'',search:''};
   seatingEvent='reception'; seatingUnit='';
   $('#back-to-top').hidden=true;
   document.body.classList.toggle('printing-itinerary',false);
   document.body.classList.toggle('printing-menu',false);
-  for(const url of menuPhotoURLs.values())URL.revokeObjectURL(url);menuPhotoURLs.clear();menuPhotoLoads.clear();
-  for(const url of photoURLs.values()) URL.revokeObjectURL(url);photoURLs.clear();photoLoads.clear();
-  sessionEpoch++; stopLive?.(); stopLive = null; data = null; weddingId = null;
+  menuPhotos.retain(new Set());
+  vendorPhotoCache.retain(new Set());
+  sessionEpoch++; stopLive?.(); stopLive = null; data = null; totals = null; weddingId = null;
+  loading=false; loadAgain=false; syncStatus='Connecting…';
   if (dialog.open) dialog.close();
+  $('#edit-form').onsubmit=null;
+  $('#fields').replaceChildren(); $('#dialog-title').textContent=''; $('#form-error').textContent='';
   $('#account').replaceChildren(); $('#main').replaceChildren(); $('#notice').textContent = '';
 }
 function renderLogin(message = '') {
@@ -129,6 +158,7 @@ async function start() {
     await reload();
     if (epoch === sessionEpoch && data) connectLive();
   } catch (error) {
+    if (epoch !== sessionEpoch) return;
     if (!api.session) renderLogin(error.message);
     else { $('#main').innerHTML = `<section class="panel"><h1>Couldn’t load your budget</h1><p>${esc(error.message)}</p>${btn('start', 'Try again')}</section>`; renderAccount(); }
   }
@@ -151,6 +181,8 @@ async function reload() {
     if (!snapshot.wedding) { resetPrivateUI(); $('#main').innerHTML = '<h1>Wedding access removed</h1><p>Contact your administrator.</p>'; renderAccount(); return; }
     const previousReady = data?.planner_ready, previousFeedback=data?.feedback_ready,previousItinerary=data?.itinerary_ready,previousMenu=data?.menu_ready,previousSeating=data?.seating_ready;
     data = {...snapshot,invitations:snapshot.invitations||[],guests:snapshot.guests||[],tasks:snapshot.tasks||[],events:snapshot.events||[],vendor_photos:snapshot.vendor_photos||[],itinerary_items:snapshot.itinerary_items||[],menu_courses:snapshot.menu_courses||[],menu_options:snapshot.menu_options||[],guest_meals:snapshot.guest_meals||[]};
+    menuPhotos.retain(new Set(data.menu_options.map(dish => dish.photo_path)));
+    vendorPhotoCache.retain(new Set(data.vendor_photos.map(photo => photo.storage_path)));
     if(selectedCategory&&!data.categories.some(c=>c.id===selectedCategory))selectedCategory='';
     if(itineraryTrack&&!itineraryTracks(data).includes(itineraryTrack))itineraryTrack='';
     totals = summarize(data); render();
@@ -160,22 +192,30 @@ async function reload() {
     if (!api.session) { resetPrivateUI(); renderLogin('Session expired. Sign in again.'); }
     else if (!data) throw error;
     else notify(`Refresh failed. Displayed figures may be out of date. ${error.message}`, true);
-  } finally { loading = false; if (loadAgain) { loadAgain = false; void reload(); } }
+  } finally {
+    // A previous account's refresh may finish while this account is still loading.
+    if (epoch === sessionEpoch) {
+      loading = false;
+      if (loadAgain) { loadAgain = false; void reload(); }
+    }
+  }
 }
 function render() {
   document.body.classList.toggle('printing-itinerary',tab==='itinerary');
   document.body.classList.toggle('printing-menu',tab==='menu');
   const previousBoard=document.querySelector('.moodboard-frame');
   renderAccount();
-  const primary=tab==='seating'?'':tab==='menu'?(data.menu_ready?btn('menu-dish-new','+ Add dish','',''):''):tab==='itinerary'?(data.itinerary_ready?btn('itinerary-new','+ Add activity','',''):''):tab==='schedule'?btn('event-new','+ Add event','',''):tab==='moodboard'?btn('moodboard-edit','Link Pinterest board'):tab==='guests'?btn('household-new','+ Add household','',''):tab==='planning'?btn('task-new','+ Add task','',''):btn('expense-new','+ Add expense','','')+btn('payment-new','Record payment');
+  const section = plannerSections[tab];
+  const primary = section.primary?.() ?? '';
   $('#main').innerHTML = `<section class="intro"><div><p class="eyebrow">BEN + MAYA · A DAY THAT’S OURS</p><h1>${esc(data.wedding.name)}</h1><p class="intro-note">A little planning. A lot of love.</p>${countdown(data.wedding.wedding_date,today())}<p class="wedding-meta">${data.wedding.wedding_date?esc(displayDate(data.wedding.wedding_date)):'Our date is still a beautiful possibility'}<span>·</span>${esc(data.wedding.currency)}</p></div><div class="actions">${primary}</div></section>
     <div class="section-head utility-bar"><small id="sync" class="sync-status">${esc(syncStatus)}</small><div class="actions">${api.pending?btn('retry','Retry pending save'):''}${btn('refresh','Refresh')}${btn('settings','Wedding settings')}${btn('export','Budget CSVs')}</div></div>
-    <nav class="planner-nav" id="planner-sections" aria-label="Planner sections">${plannerSections.map(([id,label],index)=>`<button type="button" data-action="tab-${id}" class="secondary" aria-pressed="${tab===id}"><span aria-hidden="true">${String(index+1).padStart(2,'0')}</span>${label}</button>`).join('')}</nav>
-    ${tab==='budget'?renderBudget():tab==='vendors'?renderVendors():tab==='guests'?renderGuests(data,guestFilters):tab==='planning'?renderPlanning(data,taskFilter,today()):tab==='schedule'?renderSchedule(data,today(),scheduleFilter):tab==='itinerary'?renderItinerary(data,itineraryTrack):tab==='menu'?renderMenu(data,menuFilters):tab==='seating'?renderSeating(data,seatingEvent,seatingUnit):renderMoodboard(data)}`;
+    <nav class="planner-nav" id="planner-sections" aria-label="Planner sections">${Object.entries(plannerSections).map(([id,{label}],index)=>`<button type="button" data-action="tab-${id}" class="secondary" aria-pressed="${tab===id}"><span aria-hidden="true">${String(index+1).padStart(2,'0')}</span>${label}</button>`).join('')}</nav>
+    ${section.render()}`;
   updateBackToTop();
   const nextBoard=document.querySelector('.moodboard-frame');
   if(previousBoard&&nextBoard&&previousBoard.getAttribute('src')===nextBoard.getAttribute('src'))nextBoard.replaceWith(previousBoard);
-  void loadPhotos();void loadMenuPhotos();
+  if (tab === 'vendors') void displayPhotos(data.vendor_photos,'storage_path','data-photo',vendorPhotoCache);
+  if (tab === 'menu') void displayPhotos(data.menu_options,'photo_path','data-menu-photo',menuPhotos);
 }
 function showSeatingUnit(id) {
   seatingUnit=id; render();
@@ -279,20 +319,25 @@ function renderVendors() {
   }).join('') || '<p class="empty">Add vendor contacts, then add packages to an expense to compare quotes.</p>'}</section><section class="panel"><h2>Compare offers by expense</h2>${expenseTable(totals.rows)}</section>${selectedExpense ? renderExpense(selectedExpense) : ''}`;
 }
 function openForm(title, fields, save) {
+  const epoch = sessionEpoch;
   $('#save').hidden=false;
   $('#dialog-title').textContent = title; $('#fields').innerHTML = fields; $('#form-error').textContent = '';
-  $('#save').disabled = false; $('#save').textContent = api.pending ? 'Retry original save' : 'Save';
+  $('#save').disabled = false; $('#cancel').disabled = false; $('#save').textContent = api.pending ? 'Retry original save' : 'Save';
   $('#edit-form').onsubmit = async event => {
     event.preventDefault(); $('#save').disabled = true; $('#cancel').disabled = true;
     try {
       if (api.pending) await api.retryPending(); else await save(Object.fromEntries(new FormData(event.currentTarget)));
+      if (epoch !== sessionEpoch) return;
       dialog.close(); notify('Saved.'); await reload();
     } catch (error) {
+      if (epoch !== sessionEpoch) return;
       const message = $('#form-error');
       message.textContent = errorMessage(error);
       message.scrollIntoView({block:'nearest'});
       $('#save').textContent = api.pending ? 'Retry original save' : 'Save';
-    } finally { $('#save').disabled = false; $('#cancel').disabled = false; }
+    } finally {
+      if (epoch === sessionEpoch) { $('#save').disabled = false; $('#cancel').disabled = false; }
+    }
   };
   editor.open();
 }
@@ -476,7 +521,16 @@ function paymentForm(expenseId = '', installmentId = '', paymentId = '') {
   });
   const draw = () => {
     const expense = $('#f-expense_id').value;
-    $('#installment-select').innerHTML = select('installment_id','Allocate to installment',[['','Unallocated — reconcile if scheduled'],...data.installments.filter(i => i.expense_id === expense).map(i => [i.id,`${i.label} · ${i.due_date} · ${fmt(Math.max(0,installmentBalance(i,data.payments)))} open`])],installmentId);
+    const installments = data.installments.filter(i => i.expense_id === expense);
+    const options = [['','Unallocated — reconcile if scheduled'], ...installments.map(i => [
+      i.id, `${i.label} · ${i.due_date} · ${fmt(Math.max(0,installmentBalance(i,data.payments)))} open`
+    ])];
+    // Unbooking hides the schedule from the snapshot but keeps existing allocations.
+    if (payment?.installment_id && payment.expense_id === expense &&
+        !installments.some(i => i.id === payment.installment_id)) {
+      options.push([payment.installment_id,'Current installment (schedule paused)']);
+    }
+    $('#installment-select').innerHTML = select('installment_id','Allocate to installment',options,installmentId);
   };
   draw(); $('#f-expense_id').onchange = () => { installmentId=''; draw(); };
 }
@@ -510,7 +564,9 @@ function deleteForm(table,id) {
   });
 }
 async function paymentHistory(id) {
+  const epoch = sessionEpoch;
   const history=await api.request(`record_history?table_name=eq.payments&record_id=eq.${encodeURIComponent(id)}&order=created_at.desc`);
+  if (epoch !== sessionEpoch) return;
   openForm('Payment change history',history.map(h=>`<article><p>${esc(h.created_at)} · ${esc(memberName(h.entered_by))}</p><p>${esc(h.previous.kind)} ${fmt(h.previous.amount_cents)} on ${esc(h.previous.paid_on)} → ${esc(h.current_record.kind)} ${fmt(h.current_record.amount_cents)} on ${esc(h.current_record.paid_on)}</p><p>Payer: ${esc(memberName(h.previous.payer_id))} → ${esc(memberName(h.current_record.payer_id))}</p><p>Expense: ${esc(expenseName(h.previous.expense_id))} → ${esc(expenseName(h.current_record.expense_id))}</p><p>Installment: ${esc(h.previous.installment_id||'Unallocated')} → ${esc(h.current_record.installment_id||'Unallocated')}</p><p>Notes: ${esc(h.previous.notes)} → ${esc(h.current_record.notes)}</p></article>`).join('')||'<p>No edits recorded yet.</p>',()=>{});
   $('#save').hidden=true;
 }
@@ -586,27 +642,19 @@ function menuLinkForm() {
 }
 function menuPhotoForm(id) {
   requireMenu();const dish=data.menu_options.find(o=>o.id===id);let path='',uploaded=false;
+  const epoch=sessionEpoch;
   openForm(`Photo for ${dish.name}`,input('file','Dish photo · JPEG, PNG, WebP; up to 5 MB','','file','accept="image/jpeg,image/png,image/webp"')
     +(dish.photo_path?checkbox('remove','Remove current photo'):'')+'<p>Save the dish first, then attach a private photo. A replacement gets a new private file.</p>',async f=>{
       if(f.remove==='on')return update('menu_options',dish,{photo_path:null});
-      if(!uploaded){const file=$('#f-file').files[0],ext=validatePhoto(file);path=`${weddingId}/${dish.id}/${crypto.randomUUID()}.${ext}`;await api.photo(path,{file,bucket:'menu-photos'});uploaded=true;$('#f-file').disabled=true;}
+      if(!uploaded){
+        const file=$('#f-file').files[0],ext=validatePhoto(file);
+        path=`${weddingId}/${dish.id}/${crypto.randomUUID()}.${ext}`;
+        await api.photo(path,{file,bucket:'menu-photos'});
+        if(epoch!==sessionEpoch)return;
+        uploaded=true;$('#f-file').disabled=true;
+      }
       return update('menu_options',dish,{photo_path:path});
     });
-}
-async function loadMenuPhotos() {
-  if(tab!=='menu')return;const epoch=sessionEpoch;
-  // Drop stale blob URLs when a partner replaces/removes a photo.
-  const paths=new Set(data.menu_options.map(o=>o.photo_path).filter(Boolean));
-  for(const [path,url] of menuPhotoURLs)if(!paths.has(path)){URL.revokeObjectURL(url);menuPhotoURLs.delete(path);}
-  await Promise.allSettled(data.menu_options.filter(o=>o.photo_path).map(async o=>{
-    if(!menuPhotoURLs.has(o.photo_path)){
-      if(!menuPhotoLoads.has(o.photo_path))menuPhotoLoads.set(o.photo_path,api.photo(o.photo_path,{bucket:'menu-photos'}));
-      try{const blob=await menuPhotoLoads.get(o.photo_path);if(epoch!==sessionEpoch)return;if(!menuPhotoURLs.has(o.photo_path))menuPhotoURLs.set(o.photo_path,URL.createObjectURL(blob));}
-      catch{const el=document.querySelector(`[data-menu-photo-error="${o.id}"]`);if(epoch===sessionEpoch&&el)el.textContent='Photo unavailable. Refresh to retry.';return;}
-      finally{if(epoch===sessionEpoch)menuPhotoLoads.delete(o.photo_path);}
-    }
-    const el=document.querySelector(`[data-menu-photo="${o.id}"]`);if(el&&epoch===sessionEpoch)el.src=menuPhotoURLs.get(o.photo_path);
-  }));
 }
 function downloadMenu() {
   const url=URL.createObjectURL(new Blob([menuCSV(data)],{type:'text/csv;charset=utf-8'}));
@@ -630,30 +678,41 @@ function itineraryForm(id) {
     });
 }
 function moodboardForm() {
-  requireFeedback();openForm('Link our Pinterest board',input('url','Public Pinterest board URL',data.wedding.pinterest_board_url||'','url','placeholder="https://www.pinterest.com/username/board-name/"')+'<p>Use a public board link, not a shortened pin link. Leave blank to remove it. The preview loads Pinterest content inside the app.</p>',f=>update('weddings',data.wedding,{pinterest_board_url:pinterestBoard(f.url)}));
+  requireFeedback();
+  const wedding = data.wedding;
+  openForm('Link our Pinterest board',
+    input('url','Public Pinterest board URL',wedding.pinterest_board_url||'','url','placeholder="https://www.pinterest.com/username/board-name/"')
+    +'<p>Use a public board link, not a shortened pin link. Leave blank to remove it. The preview loads Pinterest content inside the app.</p>',
+    f => update('weddings',wedding,{pinterest_board_url:pinterestBoard(f.url)}));
 }
 function vendorPhotos(id) {
-  return `<div class="vendor-photos">${data.vendor_photos.filter(p=>p.vendor_id===id).map(p=>`<figure><img data-photo="${esc(p.id)}" ${photoURLs.has(p.id)?`src="${photoURLs.get(p.id)}"`:''} alt="${esc(p.caption||'Vendor or venue picture')}" loading="lazy"><figcaption>${esc(p.caption)} ${btn('photo-delete','Delete picture',p.id)}</figcaption><small data-photo-error="${esc(p.id)}"></small></figure>`).join('')}</div>`;
+  return `<div class="vendor-photos">${data.vendor_photos.filter(p=>p.vendor_id===id).map(p=>`<figure><img data-photo="${esc(p.id)}" alt="${esc(p.caption||'Vendor or venue picture')}" loading="lazy"><figcaption>${esc(p.caption)} ${btn('photo-delete','Delete picture',p.id)}</figcaption><small data-photo-error="${esc(p.id)}"></small></figure>`).join('')}</div>`;
 }
-async function loadPhotos() {
-  if(tab!=='vendors')return;
-  const epoch=sessionEpoch;
-  await Promise.allSettled(data.vendor_photos.map(async p=>{
-    if(!photoURLs.has(p.id)) {
-      if(!photoLoads.has(p.id))photoLoads.set(p.id,api.photo(p.storage_path));
-      try {
-        const blob=await photoLoads.get(p.id);if(epoch!==sessionEpoch)return;
-        if(!photoURLs.has(p.id))photoURLs.set(p.id,URL.createObjectURL(blob));
-      } catch {if(epoch===sessionEpoch){const el=document.querySelector(`[data-photo-error="${p.id}"]`);if(el)el.textContent='Picture unavailable. Refresh to retry.';}return;}
-      finally {if(epoch===sessionEpoch)photoLoads.delete(p.id);}
+async function displayPhotos(records, pathField, attribute, cache) {
+  await Promise.all(records.map(async record => {
+    if (!record[pathField]) return;
+    // Bind to this render's nodes. A later render may show a replacement for the same record.
+    const image = document.querySelector(`[${attribute}="${record.id}"]`);
+    if (!image) return;
+    const error = document.querySelector(`[${attribute}-error="${record.id}"]`);
+    try {
+      const url = await cache.get(record[pathField]);
+      if (url && image.isConnected) image.src = url;
+    } catch {
+      if (error?.isConnected) error.textContent = 'Photo unavailable. Refresh to retry.';
     }
-    const el=document.querySelector(`[data-photo="${p.id}"]`);if(el)el.src=photoURLs.get(p.id);
   }));
 }
 function photoForm(vendorId) {
-  requireFeedback();const id=crypto.randomUUID();let uploaded=false,path='',selectedFile;
+  requireFeedback();const id=crypto.randomUUID(),epoch=sessionEpoch;let uploaded=false,path='';
   openForm('Attach a vendor or venue picture',input('file','Picture (JPEG, PNG, WebP; up to 5 MB)','','file','accept="image/jpeg,image/png,image/webp" required')+input('caption','Caption','','text','maxlength="300"'),async f=>{
-    if(!uploaded){selectedFile=$('#f-file').files[0];const ext=validatePhoto(selectedFile);path=`${weddingId}/${vendorId}/${id}.${ext}`;await api.photo(path,{file:selectedFile});uploaded=true;$('#f-file').disabled=true;}
+    if(!uploaded){
+      const file=$('#f-file').files[0],ext=validatePhoto(file);
+      path=`${weddingId}/${vendorId}/${id}.${ext}`;
+      await api.photo(path,{file});
+      if(epoch!==sessionEpoch)return;
+      uploaded=true;$('#f-file').disabled=true;
+    }
     return insert('vendor_photos',{id,vendor_id:vendorId,storage_path:path,caption:f.caption});
   });
 }
@@ -667,26 +726,27 @@ function exportCSVs() {
   notify('Exported expense and payment CSVs. Allow multiple downloads if your browser asks. Amounts are integer cents.');
 }
 const actions = {
-  'tab-seating':()=>{tab='seating';render();},
+  ...Object.fromEntries(Object.keys(plannerSections).map(id => [`tab-${id}`, () => {
+    tab = id;
+    render();
+  }])),
   'seating-event':event=>{seatingEvent=event;showSeatingUnit('');},
   'seating-open':showSeatingUnit,'seating-overview':()=>showSeatingUnit(''),
   'guest-seating':id=>editSeating('person',id,'reception'),
   ...Object.fromEntries(['add','edit','delete','number','assign','person','chair'].map(action=>['seating-'+action,id=>editSeating(action,id,seatingEvent)])),
-  'tab-menu':()=>{tab='menu';render();},'menu-course-new':()=>menuCourseForm(),'menu-course-edit':menuCourseForm,
+  'menu-course-new':()=>menuCourseForm(),'menu-course-edit':menuCourseForm,
   'menu-dish-new':()=>menuDishForm(),'menu-dish-edit':menuDishForm,
   'menu-toggle':id=>changePlannerRecord('menu_options',id,{selected:!data.menu_options.find(o=>o.id===id).selected}),
   'menu-meal':menuMealForm,'menu-link':menuLinkForm,'menu-photo':menuPhotoForm,
   'menu-expense':id=>{selectedExpense=id;tab='budget';render();},
   'menu-vendor-open':id=>{menuFilters.vendor=id;menuFilters.group='vendor';tab='menu';render();},
   'menu-export':()=>downloadMenu(),'menu-print':()=>window.print(),
-  'tab-itinerary':()=>{tab='itinerary';render();},'itinerary-new':()=>itineraryForm(),'itinerary-edit':itineraryForm,
+  'itinerary-new':()=>itineraryForm(),'itinerary-edit':itineraryForm,
   'itinerary-print':()=>window.print(),
-  'tab-schedule':()=>{tab='schedule';render();},'tab-moodboard':()=>{tab='moodboard';render();},
   'unbook':unbookForm,'payment-edit':id=>paymentForm('','',id),'payment-history':paymentHistory,
   'event-new':()=>eventForm(),'event-edit':eventForm,'event-vendor':id=>eventForm('',id),
   'moodboard-edit':moodboardForm,'moodboard-refresh':()=>{const frame=document.querySelector('.moodboard-frame');if(frame)frame.src=frame.getAttribute('src');},'photo-new':photoForm,
   ...Object.fromEntries([['expense','expenses'],['vendor','vendors'],['category','categories'],['household','invitations'],['guest','guests'],['task','tasks'],['quote','quotes'],['installment','installments'],['payment','payments'],['event','events'],['photo','vendor_photos'],['itinerary','itinerary_items'],['menu-course','menu_courses'],['menu-dish','menu_options']].map(([action,table])=>[`${action}-delete`,id=>deleteForm(table,id)])),
-  'tab-guests':()=>{tab='guests';render();},'tab-planning':()=>{tab='planning';render();},
   'household-new':()=>householdForm(),'household-edit':householdForm,
   'household-archive':id=>changePlannerRecord('invitations',id,{archived:!data.invitations.find(i=>i.id===id).archived}),
   'guest-new':invitationId=>guestForm('',invitationId),'guest-edit':id=>guestForm(id),
@@ -699,7 +759,6 @@ const actions = {
   'reset-request': renderResetRequest, 'back-to-login': () => renderLogin(),
   'cancel-recovery': async () => {try{await api.signOut();}finally{resetPrivateUI();renderLogin();}},
   start, refresh: reload, settings: settingsForm, export: exportCSVs,
-  'tab-budget': () => {tab='budget';render();}, 'tab-vendors': () => {tab='vendors';render();},
   'category-new': () => categoryForm(), 'category-edit': categoryForm,
   'filter-category': id => {selectedCategory=id;tab='budget';render();$('#expenses').scrollIntoView({block:'start'});},
   'vendor-new': () => vendorForm(), 'vendor-edit': vendorForm,
