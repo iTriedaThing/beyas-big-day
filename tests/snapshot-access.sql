@@ -32,7 +32,7 @@ select public.change_seating(:'wedding_id', 'reception', 1, gen_random_uuid(),
 select public.budget_snapshot(:'wedding_id') as previous_snapshot \gset
 reset role;
 
-\ir ../supabase/migrations/20261124025522_materialize_budget_snapshot.sql
+\ir ../supabase/migrations/20261124041840_materialize_budget_snapshot.sql
 
 -- Count helper executions directly to avoid dependence on hardware or timings.
 set local track_functions = 'all';
