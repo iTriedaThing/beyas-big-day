@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {installMock} from './fixture.js';
+import {menuEstimate} from '../docs/menu.js';
 import {config} from '../docs/config.js';
 
 test('feedback flows render and save through the app; Forecast survives polling and tab changes',async t=>{
@@ -11,13 +12,19 @@ test('feedback flows render and save through the app; Forecast survives polling 
   const elements=new Map(),listeners=new Map(),intervals=[];
   class Element {
     constructor(id){this.id=id;this.textContent='';this.open=false;this.isConnected=true;this.disabled=false;this.value='';this.style={setProperty(){},removeProperty(){}};this.listeners=new Map();}
-    set innerHTML(html){this.html=html;for(const match of html.matchAll(/(?:^|\s)id="([^"]+)"/g))elements.set(match[1],new Element(match[1]));}
+    set innerHTML(html){
+      this.html=html;
+      for(const match of html.matchAll(/(?:^|\s)id="([^"]+)"/g))elements.set(match[1],new Element(match[1]));
+      for(const [,id,options] of html.matchAll(/<select id="([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)){
+        elements.get(id).value=options.match(/<option value="([^"]*)" selected>/)?.[1]??options.match(/<option value="([^"]*)"/)?.[1]??'';
+      }
+    }
     get innerHTML(){return this.html||'';}
     replaceChildren(){this.innerHTML='';}
     querySelector(){return new Element('button');}
     showModal(){this.open=true;}
     close(){this.open=false;this.listeners.get('close')?.();}
-    reset(){}scrollIntoView(){}
+    reset(){}scrollIntoView(){}focus(){}setSelectionRange(){}
     addEventListener(name,handler){this.listeners.set(name,handler);}
   }
   const el=id=>{if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);};
@@ -30,8 +37,14 @@ test('feedback flows render and save through the app; Forecast survives polling 
     setInterval:(fn,ms)=>{intervals.push({fn,ms});return intervals.length;},clearInterval(){},setTimeout:()=>1,clearTimeout(){},
     fetch:async()=>{throw new Error('Unexpected real network request in app fixture');}
   });
-  installMock();const mockFetch=globalThis.fetch;
-  globalThis.fetch=(url,options)=>mockFetch(String(url).replace(config.supabaseUrl,'https://fixture.supabase.co'),options);
+  installMock(menuEstimate);const mockFetch=globalThis.fetch;
+  let historyDelay, snapshotDelay;
+  globalThis.fetch=async(url,options)=>{
+    const response=await mockFetch(String(url).replace(config.supabaseUrl,'https://fixture.supabase.co'),options);
+    if(historyDelay&&String(url).includes('/record_history?'))await historyDelay;
+    if(snapshotDelay&&String(url).includes('/rpc/budget_snapshot'))await snapshotDelay;
+    return response;
+  };
   const settle=async()=>{for(let i=0;i<5;i++)await new Promise(resolve=>setImmediate(resolve));};
   await import('../docs/app.js');await settle();
   assert.match(el('main').innerHTML,/Sign in/);
@@ -39,7 +52,7 @@ test('feedback flows render and save through the app; Forecast survives polling 
   await el('login').onsubmit({preventDefault(){},currentTarget:el('login')});await settle();
   let focusedAction;
   const click=async(action,id='')=>{const target={dataset:{action,id},disabled:false,isConnected:true,focus(){focusedAction=action;}};await listeners.get('click')({preventDefault(){},target:{closest:()=>target}});await settle();};
-  const submit=async values=>{el('edit-form').values=values;await el('edit-form').onsubmit({preventDefault(){},currentTarget:el('edit-form')});await settle();assert.equal(el('form-error').textContent,'');};
+  const submit=async (values,expectedError=/^$/)=>{el('edit-form').values=values;await el('edit-form').onsubmit({preventDefault(){},currentTarget:el('edit-form')});await settle();assert.match(el('form-error').textContent,expectedError);};
   await click('task-new');
   assert.equal(el('editor').open,true);
   assert.equal(rootClasses.has('editor-open'),true);
@@ -52,6 +65,9 @@ test('feedback flows render and save through the app; Forecast survives polling 
   listeners.get('change')({target:{id:'comparison',value:'forecast'}});
   const poll=intervals.find(i=>i.ms===20000);poll.fn();await settle();
   assert.match(el('main').innerHTML,/<option value="forecast" selected>/);
+  await click('tab-seating');assert.match(el('main').innerHTML,/<h2>Seating chart<\/h2>/);
+  assert.match(el('main').innerHTML,/data-action="tab-seating"[^>]*aria-pressed="true"/);
+  await click('tab-planning');assert.match(el('main').innerHTML,/<h2>Your road to/);
   await click('tab-vendors');assert.match(el('main').innerHTML,/<a href="https:\/\/example.invalid\//);
   await click('tab-budget');assert.match(el('main').innerHTML,/<option value="forecast" selected>/);
   await click('settings');assert.match(el('fields').innerHTML,/<select id="f-time_zone"/);el('editor').close();
@@ -62,6 +78,11 @@ test('feedback flows render and save through the app; Forecast survives polling 
   await click('payment-history','p1');assert.match(el('fields').innerHTML,/\$900.00[\s\S]*\$1,000.00/);el('editor').close();
   await click('unbook','catering');await submit({reason:'Considering another vendor'});
   assert.match(el('main').innerHTML,/\$4,000.00/);assert.match(el('main').innerHTML,/Planning/);assert.match(el('main').innerHTML,/Schedule paused while unbooked/);
+  await click('payment-edit','p1');
+  const selectedInstallment=el('f-installment_id').value;
+  assert.equal(selectedInstallment,'deposit','a note edit must keep the payment linked to its paused schedule');
+  await submit({expense_id:'catering',kind:'payment',amount:'1000',paid_on:'2026-11-14',payer_id:'00000000-0000-0000-0000-000000000002',installment_id:selectedInstallment,notes:'Deposit confirmed'});
+  assert.match(el('main').innerHTML,/Schedule paused while unbooked/);
   await click('tab-guests');await click('household-new');
   await submit({household_name:'Sample household',guest_names:'Taylor',unnamed_count:'0',invited_by:'00000000-0000-0000-0000-000000000002',contact_email:'',phone:'',mailing_address:'',notes:'',save_the_date_sent_on:'',invitation_sent_on:''});
   assert.match(el('main').innerHTML,/From Ben/);
@@ -76,7 +97,17 @@ test('feedback flows render and save through the app; Forecast survives polling 
   assert.doesNotMatch(el('main').innerHTML,/Cake tasting/);
   await click('tab-schedule');await click('event-edit',scheduledId);await submit({...tour,vendor_id:''});
   await click('tab-vendors');assert.doesNotMatch(el('main').innerHTML,/Atrium/);
-  await click('tab-moodboard');await click('moodboard-edit');await submit({url:'https://www.pinterest.com/example/wedding/'});
+  await click('tab-moodboard');await click('moodboard-edit');
+  const fixtureAPI='https://fixture.supabase.co/rest/v1';
+  const [wedding]=await (await mockFetch(fixtureAPI+'/weddings?select=id,version')).json();
+  const partnerBoard='https://www.pinterest.com/example/partner-board/';
+  await mockFetch(`${fixtureAPI}/weddings?id=eq.${wedding.id}&version=eq.${wedding.version}`,{
+    method:'PATCH',body:JSON.stringify({pinterest_board_url:partnerBoard})
+  });
+  poll.fn();await settle();
+  await submit({url:'https://www.pinterest.com/example/wedding/'},/Someone changed this record/);
+  assert.ok(el('main').innerHTML.includes(partnerBoard));
+  el('editor').close();await click('moodboard-edit');await submit({url:'https://www.pinterest.com/example/wedding/'});
   assert.match(el('main').innerHTML,/<iframe class="moodboard-frame"/);
   await click('tab-itinerary');assert.match(el('main').innerHTML,/Day-of itinerary/);assert.match(el('main').innerHTML,/Ben gets ready/);assert.match(el('main').innerHTML,/Maya gets ready/);
   await click('itinerary-new');await submit({title:'Shared first look',track:'Wedding party',start_time:'10:30',end_time:'11:00',day_offset:'0',location:'Courtyard',vendor_id:'',notes:'Bring flowers'});
@@ -100,6 +131,27 @@ test('feedback flows render and save through the app; Forecast survives polling 
   await click('menu-vendor-open','vendor');assert.match(el('main').innerHTML,/value="vendor" selected/);assert.match(el('main').innerHTML,/Lemon cakes/);
   const cakeId=el('main').innerHTML.match(/<h4>Lemon cakes<\/h4>[\s\S]*?data-action="menu-toggle" data-id="([^"]+)"/)[1];
   await click('menu-dish-delete',cakeId);await submit({confirm:'DELETE'});assert.ok(!el('main').innerHTML.includes('Lemon cakes'));assert.match(el('main').innerHTML,/\$80.00/);
+  await click('tab-guests');
+  const privateQuery='example search from first session';
+  listeners.get('input')({target:{id:'f-guest-search',value:privateQuery,selectionStart:privateQuery.length}});
+  await click('tab-budget');await click('payment-edit','p1');el('editor').close();
+  assert.match(el('fields').innerHTML,/Deposit confirmed/);
+  let releaseHistory, releaseSnapshot;
+  historyDelay=new Promise(resolve=>{releaseHistory=resolve;});
+  snapshotDelay=new Promise(resolve=>{releaseSnapshot=resolve;});
+  const historyClick=click('payment-history','p1');
+  poll.fn();
+  await settle();
+  await click('logout');
+  assert.equal(el('fields').innerHTML,'');
+  assert.equal(el('edit-form').onsubmit,null);
+  snapshotDelay=null;
+  el('login').values={email:'another@example.invalid',password:'mock-only'};
+  await el('login').onsubmit({preventDefault(){},currentTarget:el('login')});await settle();
+  assert.match(el('main').innerHTML,/Budget vs. paid/,'sign-in can finish while the prior session is still refreshing');
+  releaseHistory();releaseSnapshot();await historyClick;
+  assert.equal(el('editor').open,false,'history from the prior session must not open in this one');
+  await click('tab-guests');assert.ok(!el('main').innerHTML.includes(privateQuery));
   await click('tab-budget');await click('expense-delete','catering');assert.match(el('fields').innerHTML,/quotes, installments, and payments/);
-  await submit({confirm:'DELETE'});assert.ok(!el('main').innerHTML.includes('Corrected deposit'));
+  await submit({confirm:'DELETE'});assert.ok(!el('main').innerHTML.includes('Deposit confirmed'));
 });

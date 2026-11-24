@@ -11,18 +11,29 @@ export function cents(value, optional = false) {
 export function quoteTotal(quote) {
   return quote.unit_cents * (quote.pricing_basis === 'per_person' ? quote.headcount : 1);
 }
-export function expenseTotals(expense, quotes, payments) {
+function netPayments(payments, include) {
+  let total = 0;
+  for (const payment of payments) {
+    if (include(payment)) total += payment.kind === 'refund' ? -payment.amount_cents : payment.amount_cents;
+  }
+  return total;
+}
+function expenseForecast(expense, quotes) {
+  if (expense.agreed_cents != null) return expense.agreed_cents;
+  // A linked menu owns the forecast even while its estimate is incomplete.
+  if (expense.menu_linked) return expense.menu_estimate_cents;
   const quote = quotes.find(q => q.id === expense.preferred_quote_id);
-  const forecast = expense.agreed_cents ?? (expense.menu_linked ? expense.menu_estimate_cents : (quote ? quoteTotal(quote) : expense.target_cents));
-  const paid = payments.filter(p => p.expense_id === expense.id)
-    .reduce((sum, p) => sum + (p.kind === 'refund' ? -p.amount_cents : p.amount_cents), 0);
+  return quote ? quoteTotal(quote) : expense.target_cents;
+}
+export function expenseTotals(expense, quotes, payments) {
+  const forecast = expenseForecast(expense, quotes);
+  const paid = netPayments(payments, p => p.expense_id === expense.id);
   return { forecast, paid, owed: expense.agreed_cents === null ? 0 : Math.max(0, expense.agreed_cents - paid),
     credit: expense.agreed_cents === null ? 0 : Math.max(0, paid - expense.agreed_cents),
     variance: forecast === null || expense.target_cents === null ? null : forecast - expense.target_cents };
 }
 export function installmentBalance(installment, payments) {
-  return installment.amount_cents - payments.filter(p => p.installment_id === installment.id)
-    .reduce((sum, p) => sum + (p.kind === 'refund' ? -p.amount_cents : p.amount_cents), 0);
+  return installment.amount_cents - netPayments(payments, p => p.installment_id === installment.id);
 }
 export function summarize(data) {
   const rows = data.expenses.map(e => ({ ...e, ...expenseTotals(e, data.quotes, data.payments) }));
@@ -37,7 +48,7 @@ export function summarize(data) {
     .filter(i => i.remaining > 0).sort((a, b) => a.due_date.localeCompare(b.due_date));
   return { rows, categories, forecast: total('forecast'), paid: total('paid'), owed: total('owed'), credit: total('credit'),
     allocated: total('target_cents'), unknown: rows.filter(e => e.forecast === null).length, upcoming,
-    unallocated: data.payments.filter(p => !p.installment_id).reduce((s, p) => s + (p.kind === 'refund' ? -p.amount_cents : p.amount_cents), 0) };
+    unallocated: netPayments(data.payments, p => !p.installment_id) };
 }
 // Prevent spreadsheet formula execution in exported user-entered text.
 export function csv(rows) {

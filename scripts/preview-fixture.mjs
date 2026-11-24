@@ -1,22 +1,20 @@
-// Explicitly separate from the production server. No real Supabase requests or accounts.
-import http from 'node:http';
 import {readFile} from 'node:fs/promises';
-import path from 'node:path';
-const root=path.resolve('docs');
-const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.webmanifest':'application/manifest+json'};
-http.createServer(async(req,res)=>{
-  const pathname=new URL(req.url,'http://localhost').pathname;
-  try{
-    let source,type='text/javascript; charset=utf-8';
-    if(pathname==='/config.js')source="export const config={supabaseUrl:'https://fixture.supabase.co',publishableKey:'sb_publishable_fixture'};";
-    else if(pathname==='/fixture.js')source=(await readFile('tests/fixture.js','utf8')).replace("'../docs/menu.js'","'./menu.js'");
-    else {
-      const file=path.resolve(root,'.'+decodeURIComponent(pathname==='/'?'/index.html':pathname));
-      if(!file.startsWith(root+path.sep))throw new Error('outside root');
-      source=await readFile(file);
-      type=types[path.extname(file)]||type;
-      if(pathname==='/app.js')source="import {installMock} from './fixture.js';installMock();\n"+source;
-    }
-    res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-store'});res.end(source);
-  }catch{res.writeHead(404);res.end('Not found');}
-}).listen(4174,'127.0.0.1',()=>console.log('Mock-data UI preview only: http://127.0.0.1:4174'));
+import {createPreviewServer} from './preview-server.mjs';
+
+async function loadFixtureAsset(file, pathname) {
+  if (pathname === '/config.js') {
+    return "export const config={supabaseUrl:'https://fixture.supabase.co',publishableKey:'sb_publishable_fixture'};";
+  }
+  if (pathname === '/fixture.js') {
+    return readFile(new URL('../tests/fixture.js', import.meta.url));
+  }
+  if (pathname === '/app.js') {
+    const app = await readFile(file, 'utf8');
+    return "import {installMock} from './fixture.js';\nimport {menuEstimate as fixtureEstimate} from './menu.js';\ninstallMock(fixtureEstimate);\n" + app;
+  }
+  return readFile(file);
+}
+
+createPreviewServer(loadFixtureAsset).listen(4174, '127.0.0.1', () => {
+  console.log('Mock-data UI preview only: http://127.0.0.1:4174');
+});

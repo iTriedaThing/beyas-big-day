@@ -2,7 +2,7 @@
 
 Beya is Ben + Maya’s couple name. The individual partners are Ben and Maya.
 
-A private wedding planner for two people: GitHub Pages serves `docs/`; a dedicated Supabase project provides Auth, Postgres, RLS, Realtime, and private photo Storage. The shared budget, partner-entered guest list/RSVPs, and date-based checklist from [the build brief](wedding-planner-build-brief.md) are implemented. The couple's reviewed feedback includes a unified dated agenda and Pinterest board preview. Interactive menu planning is implemented on this branch, its approved hosted migration is applied, and its frontend release is pending; see [menu acceptance](MENU-VALIDATION.md). Visual seating is live in section 09. Guest-entered replies and a month-grid calendar remain later releases. PR #4 is published, and the approved feedback migration was applied on November 14, 2026; see [feedback acceptance](FEEDBACK-VALIDATION.md).
+A private wedding planner for two people. GitHub Pages serves the browser app from `docs/`. Supabase provides authentication, Postgres, row-level security, live updates, and private photo storage. The planner covers budgeting, vendors, guests and RSVPs, checklists, scheduling, inspiration, the day-of itinerary, menus, and seating. Guest-entered replies and a month-grid calendar remain future work. See the [build brief](wedding-planner-build-brief.md).
 
 ## What ships
 
@@ -24,6 +24,13 @@ A private wedding planner for two people: GitHub Pages serves `docs/`; a dedicat
 
 ## Local development
 
+### Where to make a change
+
+- The `plannerSections` object in `docs/app.js` connects each section's navigation label, view, and primary action. The same file coordinates editors, polling, and snapshot updates.
+- `docs/budget.js`, `docs/planner.js`, `docs/menu.js`, `docs/seating.js`, and `docs/itinerary.js` hold feature rules. Their corresponding tests in `tests/` exercise those rules with synthetic data.
+- `docs/api.js` owns sessions, authenticated requests, live subscriptions, and pending saves. `supabase/migrations/` contains the corresponding database contracts in application order.
+- `scripts/` contains the local preview servers and checks. `tests/fixture.js` supplies the in-memory wedding shared by the mock preview and the app wiring test.
+
 ### Visual seating
 
 **09 · Seating chart** opens on the reception. Add circular, rectangular or square tables individually or in batches of up to 200. Select a table in the diagram or the list to rename it (including a head table), change its shape, capacity or position, and assign guests. Repeat batches to extend either plan. The room overview follows display order and wraps to the available width.
@@ -36,13 +43,13 @@ The [seating migration](supabase/migrations/20261123234251_visual_seating.sql) c
 
 For a fixture preview, run the mock server below. To exercise the [SQL regression suite](tests/seating-access.sql), start a disposable local PostgreSQL database with the existing Auth and Storage test stubs and migrations through the interactive menu. Run `psql -X -v ON_ERROR_STOP=1 -d <local-test-db> -f tests/seating-access.sql`. The suite seeds synthetic legacy labels, applies the seating migration inside a transaction and rolls back.
 
-The planner sections are listed in `docs/app.js`. The `--planner-columns` property in `docs/styles.css` controls how many appear in each navigation row. The bottom-right arrow returns keyboard focus to the active planner section after the navigation has scrolled out of view.
+The `--planner-columns` property in `docs/styles.css` controls how many sections appear in each navigation row. The bottom-right arrow returns keyboard focus to the active planner section after the navigation has scrolled out of view.
 
 ### Interactive menu — prepared November 17, 2026
 
 **08 · Our menu** adds courses, selectable dish/photo cards, vendor links/grouping, ratings, and fixed, shared per-person, confirmed-choice, or planned-quantity pricing. Active attending guests can receive a meal per course from the guest list or menu. The table-sorted caterer manifest keeps meal choices, dietary requests and caterer confirmation separate, with dish counts, missing-choice review, CSV export and print styles. One linked expense supplies the budget forecast without duplicating catering; booked agreements and payments remain unchanged. See [pricing rules, verification and rollout](MENU-VALIDATION.md).
 
-The additive `20261117141256_interactive_menu_planning.sql` migration adds three membership-protected tables, the private `menu-photos` bucket, optional guest table labels and one catering expense link. It was **applied with explicit approval to `beyas-big-day` on November 17, 2026**, recorded as version `20261117141256`. The SQL filename now matches hosted history; do not apply it again there. Hosted access/role checks pass and existing financial row checksums match. No sample menu rows were inserted. Frontend PR merge/publication remains pending; actual two-account syncing, hosted photo behavior and printing still require acceptance checks. Future hosted migrations, merge and publication require their applicable approvals.
+The additive `20261117141256_interactive_menu_planning.sql` migration adds three membership-protected tables, the private `menu-photos` bucket, optional guest table labels and one catering expense link. It was **applied with explicit approval to `beyas-big-day` on November 17, 2026**, recorded as version `20261117141256`. The SQL filename matches hosted history. The menu frontend was merged in PR #9. See the [menu acceptance record](MENU-VALIDATION.md) for the hosted checks and outstanding two-account, photo, and print scenarios.
 
 ### Day-of itinerary — deployed November 14, 2026
 
@@ -119,7 +126,7 @@ Open **The Big Day** from the home screen and sign in with your existing account
 ## Data and calculation rules
 
 - All money is integer cents, with strict decimal parsing. The release supports USD, CAD, GBP, EUR, AUD, and NZD (two decimal places). Each amount is limited to 1,000,000,000 cents. Currency changes are blocked once expenses exist; there is no currency conversion.
-- Forecast uses **agreed price → preferred quote total → item target**, choosing exactly one. Blank is unknown; zero is explicit. Unknown items flag forecast as incomplete. Allocated category targets sum the item targets, rather than duplicating a second category budget.
+- Forecast uses the agreed price for a booked expense. For an unbooked expense linked to catering, it uses the menu estimate, including an unknown estimate. Other unbooked expenses use the preferred quote total or, failing that, the item target. Zero is an explicit amount. An unknown item makes the forecast incomplete. Category allocations sum their item targets.
 - Paid is payments less refunds. Owed sums positive booked balances; credits are shown separately rather than hiding another vendor’s bill. A quote edit never changes a booked agreement.
 - An installment is settled only by its linked transactions. Unallocated payments are flagged for reconciliation; they still reduce the expense balance. Refunds may reopen an installment. Scheduling does not create additional expenses or payments. The app shows the installment schedule alongside the agreement so discrepancies can be reconciled.
 - After the feedback migration, payments/refunds are editable with optimistic version checks. Original recorder/creation attribution stays immutable; private `record_history` stores before/after rows and the editor. Deletion removes the record from totals and exports while retaining history. Unbooking/deleting a record only changes this planner: it does not cancel a vendor contract, refund money, or transfer funds. Before that migration, the original append-only payment rules still apply.
@@ -129,7 +136,7 @@ Open **The Big Day** from the home screen and sign in with your existing account
 
 ## Verification performed
 
-- `node --test tests/*.test.mjs`: 52 tests passed, including existing budget/auth/planner invariants, URL/photo validation, agenda merging, binary authenticated photo requests, Pinterest script isolation, itinerary time/date/track/rendering rules, and an app wiring fixture exercising edits, unbooking, guest attribution, event/itinerary creation and deletion, and chart choice through polling. The app wiring fixture uses a minimal in-memory DOM adapter; it is not a browser or layout test.
+- The maintainability review passed all 73 Node tests, including pending-save recovery, paused installment allocation, conflicting partner edits, photo eviction, and menu calculations. The app wiring test uses an in-memory DOM adapter. A separate Chrome fixture check exercised all nine sections and a checklist edit at 1280 × 900 and 390 × 844.
 - `node scripts/check.mjs`: syntax, entry assets, and relative asset checks passed. There is no separate lint/typecheck/build toolchain configured.
 - Migration applied successfully to isolated **PostgreSQL 16.4** with test-only Auth stubs. [tests/access.sql](tests/access.sql) passed: two-member reads, outsider isolation across every table, signed-out denial, administrative memberships, same-wedding/expense references, immutable ledger, actor checks, retry deduplication, atomic purchase rollback, version conflicts, preserved quotes, and amendment history.
 - Supabase CLI v3.1.0 security advisors against that local test database: **No issues found**.
@@ -142,19 +149,15 @@ Open **The Big Day** from the home screen and sign in with your existing account
 - Feedback migration plus [feedback access tests](tests/feedback-access.sql) passed in a fresh disposable PostgreSQL database: audited payment edits, stale edits/deletions, recorder protection, unbooking, deletion cascades/retries, deleted-parent guards, household attribution, event isolation, private photo-path policies, and signed-out/outsider denial. Supabase CLI security advisors returned **No issues found** against that local database. Existing base/planner SQL tests were rerun at their original schema versions and passed before the feedback migration changed their contracts.
 - The [feedback browser acceptance run](BROWSER-ACCEPTANCE.md) succeeded against the mock preview at `localhost`, covering all fourteen items with documented limits. It found and fixed clipped intermediate-width money cards, CSS overriding a hidden history button, a missing Pinterest JSONP origin in the isolated frame's CSP, and a decorative star intercepting Forecast clicks. Retests included a visibly rendered public Pinterest board, every deletion type, payment corrections/history, guest attribution CSV, picture validation/gallery/sign-out, schedule/ranking flows, polling retention, keyboard operation, and phone-width geometry. Actual hosted Storage and two-device sync, physical-phone behavior, external popup navigation, and delivery of the second Budget CSV remain outstanding.
 
-To repeat SQL tests on a **new disposable database** with `psql`:
+### Run the complete database suite locally
+
+Point `psql` at a **fresh, disposable local PostgreSQL database**. Use a local administrator account that can create test roles and schemas and enable function statistics. The suite installs Auth and Storage stubs, then runs the access tests at the migration versions they cover.
 
 ```sh
-psql -v ON_ERROR_STOP=1 -d YOUR_DISPOSABLE_DATABASE -f tests/bootstrap.sql -f supabase/migrations/20261113132432_shared_budget.sql -f tests/access.sql
+psql -X -d YOUR_DISPOSABLE_DATABASE -f tests/all.sql
 ```
 
-Then apply/test the additive planner migration in the same disposable database:
-
-```sh
-psql -v ON_ERROR_STOP=1 -d YOUR_DISPOSABLE_DATABASE -f supabase/migrations/20261113203508_guests_and_checklist.sql -f tests/planner-access.sql
-```
-
-Bootstrap creates test roles if absent and creates the Auth stub schema that a normal Supabase project already has. Access-test fixtures run in a transaction and roll back. Do not run bootstrap against a shared or production database. Use a fresh disposable database for each full migration run.
+The [snapshot regression](tests/snapshot-access.sql) compares the full planner response before and after the [snapshot optimization](supabase/migrations/20261124025522_materialize_budget_snapshot.sql). It verifies that each underlying snapshot and the menu estimate are computed once per refresh. This optimization can be rolled out independently of the browser changes. Applying it to a hosted database requires separate approval.
 
 Run `node scripts/check-public-access.mjs` to verify that the configured hosted project's nine tables and budget-snapshot RPC deny signed-out Data API requests. This uses only the publishable key, writes no records, and does not replace the member/outsider checks in `VERIFICATION.md`.
 

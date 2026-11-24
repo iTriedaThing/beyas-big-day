@@ -29,6 +29,23 @@ test('deselected/deleted dishes invalidate choices, pending is explicit and arch
   d.menu_options[0].selected=true;assert.equal(guestMeal(d,'a','main').status,'chosen');d.guest_meals[0].option_id=null;assert.equal(guestMeal(d,'a','main').status,'pending');
   d.menu_courses[0].deleted=true;assert.ok(!mealManifest(d).some(r=>r.course.id==='main'));
 });
+test('the manifest keeps choices separate by course and lists each shared vendor once', () => {
+  const data = sample();
+  const dessert = {id:'dessert', name:'Dessert', sort_order:3, choices_offered:true};
+  data.menu_courses.push(dessert);
+  data.menu_options.push({...data.menu_options[0], id:'cake', course_id:dessert.id, name:'Cake'});
+  data.guest_meals.push({guest_id:'a', course_id:dessert.id, option_id:'cake', deleted:true});
+  data.menu_options[2].vendor_id = 'v';
+  data.menu_options.push({...data.menu_options[2], id:'juice', name:'Juice'});
+
+  const meals = mealManifest(data).filter(row => row.guest.id === 'a');
+  assert.deepEqual(meals.map(row => [row.course.id, row.status, row.vendor]), [
+    ['main', 'chosen', 'Our caterer'], ['drinks', 'shared', 'Our caterer'], ['dessert', 'pending', '']
+  ]);
+  assert.deepEqual(meals[1].shared.map(dish => dish.name), ['Wine package', 'Juice']);
+  assert.equal(dishCount(data, 'cake'), 0);
+  assert.equal(menuEstimate(data).cents, null);
+});
 test('fixed packages and integer quantities preserve zero, blanks, headcount and overflow',()=>{
   const d=sample();d.menu_options=[{id:'x',course_id:'drinks',selected:true,pricing_basis:'fixed',unit_cents:0}];assert.equal(menuEstimate(d).cents,0);
   d.menu_options[0].unit_cents=null;assert.equal(menuEstimate(d).cents,null);

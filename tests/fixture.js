@@ -1,6 +1,5 @@
-// In-memory browser fixture. Imported only by scripts/preview-fixture.mjs.
-import {menuEstimate} from '../docs/menu.js';
-export function installMock() {
+// Used by the mock preview and app wiring tests. Each installation starts a fresh wedding.
+export function installMock(menuEstimate) {
   const w = '10000000-0000-0000-0000-000000000001', a = '00000000-0000-0000-0000-000000000001', b = '00000000-0000-0000-0000-000000000002';
   const fixture = {
     wedding:{id:w,name:'Beya’s big day',currency:'USD',cap_cents:1000000,wedding_date:'2027-06-19',planning_headcount:90,time_zone:'America/New_York',version:1},
