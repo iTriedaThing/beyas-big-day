@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {installMock} from './fixture.js';
+import {menuEstimate} from '../docs/menu.js';
 import {config} from '../docs/config.js';
 
 test('feedback flows render and save through the app; Forecast survives polling and tab changes',async t=>{
@@ -30,7 +31,7 @@ test('feedback flows render and save through the app; Forecast survives polling 
     setInterval:(fn,ms)=>{intervals.push({fn,ms});return intervals.length;},clearInterval(){},setTimeout:()=>1,clearTimeout(){},
     fetch:async()=>{throw new Error('Unexpected real network request in app fixture');}
   });
-  installMock();const mockFetch=globalThis.fetch;
+  installMock(menuEstimate);const mockFetch=globalThis.fetch;
   globalThis.fetch=(url,options)=>mockFetch(String(url).replace(config.supabaseUrl,'https://fixture.supabase.co'),options);
   const settle=async()=>{for(let i=0;i<5;i++)await new Promise(resolve=>setImmediate(resolve));};
   await import('../docs/app.js');await settle();
