@@ -32,6 +32,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .card.feature{color:#fffefc;background:var(--green);border-color:var(--green)}.card.feature a{color:inherit}.card.feature small{color:#dce5df}.card.feature::after{content:'✦';font:80px Georgia,serif;color:#ffffff0c;position:absolute;right:10px;bottom:-12px}
 .panel{margin:22px 0}.panel p:last-child{margin-bottom:0}.twocol{display:grid;grid-template-columns:1fr 1fr;gap:22px}.twocol>.panel{margin:0 0 22px}.panel .panel{padding:20px;margin-bottom:0;box-shadow:none}
 .vendor-website { overflow-wrap: anywhere; }
+.vendor-tours { overflow-wrap: anywhere; }
+.vendor-tours h4 { margin: 0 0 4px; }
+.vendor-tours ul { margin: 0 0 16px; padding-inline-start: 1.3em; }
+.vendor-tours li + li { margin-top: 6px; }
 .good{color:var(--green)}.purple{color:var(--purple)}.warning{color:var(--red);font-weight:600}
 .badge,.gift-badge{display:inline-flex;padding:4px 8px;border-radius:5px;font-size:10px;line-height:1.3;letter-spacing:.3px;background:var(--lavender);color:var(--purple)}.gift-badge{background:var(--sage-light);color:var(--green)}.preline{white-space:pre-line}
 label{display:block;font-size:12px;font-weight:600;color:var(--sage);margin:16px 0 6px}
