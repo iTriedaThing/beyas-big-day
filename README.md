@@ -157,7 +157,7 @@ Point `psql` at a **fresh, disposable local PostgreSQL database**. Use a local a
 psql -X -d YOUR_DISPOSABLE_DATABASE -f tests/all.sql
 ```
 
-The [snapshot regression](tests/snapshot-access.sql) compares the full planner response before and after the [snapshot optimization](supabase/migrations/20261124025522_materialize_budget_snapshot.sql). It verifies that each underlying snapshot and the menu estimate are computed once per refresh. This optimization can be rolled out independently of the browser changes. Applying it to a hosted database requires separate approval.
+The [snapshot regression](tests/snapshot-access.sql) compares the full planner response before and after the [snapshot optimization](supabase/migrations/20261124041840_materialize_budget_snapshot.sql). It verifies that each underlying snapshot and the menu estimate are computed once per refresh. Supabase recorded the approved rollout to `beyas-big-day` as version `20261124041840`. The full hosted snapshot checksum matched before and after rollout. Both partner roles could read the planner, the outsider role received no wedding data, and the signed-out role lacked snapshot execution privileges.
 
 Run `node scripts/check-public-access.mjs` to verify that the configured hosted project's nine tables and budget-snapshot RPC deny signed-out Data API requests. This uses only the publishable key, writes no records, and does not replace the member/outsider checks in `VERIFICATION.md`.
 
