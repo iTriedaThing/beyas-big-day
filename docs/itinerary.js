@@ -9,7 +9,7 @@ export function timeMinutes(value) {
 export function itineraryRecord(fields) {
   const title=String(fields.title||'').trim(),track=String(fields.track||'').trim();
   if(!title||title.length>160)throw new Error('Enter an activity name of 1–160 characters.');
-  if(!track||track.length>100)throw new Error('Enter a track of 1–100 characters, such as Ben, Maya, or Together.');
+  if(!track||track.length>100)throw new Error('Enter a track of 1–100 characters, such as Together or Wedding party.');
   const start=timeMinutes(fields.start_time),end=fields.end_time?timeMinutes(fields.end_time):null;
   if(end===start)throw new Error('The end time must differ from the start time. Leave it blank if undecided.');
   if(!['0','1'].includes(String(fields.day_offset)))throw new Error('Choose the wedding day or the following day.');
@@ -40,7 +40,7 @@ export function formatTime(value) {
 export function renderItinerary(data,track='') {
   if(!data.itinerary_ready)return '<section class="panel empty-state"><h2>Day-of itinerary</h2><p>This section is being prepared. Your existing wedding planner is ready to use.</p></section>';
   const rows=itineraryRows(data,track),date=data.wedding.wedding_date;
-  return `<section class="page-heading itinerary-heading"><div><span class="eyebrow">THE DAY, ONE MOMENT AT A TIME</span><h2>Our wedding-day itinerary</h2><p class="itinerary-print-meta">${esc(data.wedding.name)} · ${esc(track||'All tracks')}</p><p>${date?esc(displayDate(date)):'Date to be decided'} · Times in ${esc(data.wedding.time_zone)}</p><p>Ben, Maya, and everyone together. Parallel preparations can share the same time.</p></div><div class="actions itinerary-controls">${btn('itinerary-print','Print itinerary')}${btn('itinerary-new','+ Add activity','','')}</div></section>
+  return `<section class="page-heading itinerary-heading"><div><span class="eyebrow">THE DAY, ONE MOMENT AT A TIME</span><h2>Our wedding-day itinerary</h2><p class="itinerary-print-meta">${esc(data.wedding.name)} · ${esc(track||'All tracks')}</p><p>${date?esc(displayDate(date)):'Date to be decided'} · Times in ${esc(data.wedding.time_zone)}</p><p>Parallel preparations can share the same time.</p></div><div class="actions itinerary-controls">${btn('itinerary-print','Print itinerary')}${btn('itinerary-new','+ Add activity','','')}</div></section>
     <section class="panel itinerary-panel"><div class="itinerary-controls">${select('itinerary-track','Show track',[['','All tracks'],...itineraryTracks(data).map(t=>[t,t])],track)}<p class="muted">Use All tracks for the combined plan. Printing follows this selection.</p></div>
     ${rows.length?[0,1].map(day=>{
       const entries=rows.filter(i=>i.day_offset===day);if(!entries.length)return '';

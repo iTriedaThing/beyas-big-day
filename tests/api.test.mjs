@@ -151,3 +151,16 @@ test('retrying while a save is in flight shares its confirmation', async () => {
   assert.deepEqual(retry, original);
   assert.equal(api.pending, null);
 });
+test('sign-out clears local access while the server is still processing logout',async()=>{
+  let finish, authorization;
+  const api=new Api(config,storage(),async(url,options)=>{
+    authorization=options.headers.Authorization;
+    return new Promise(resolve=>{finish=()=>resolve(Response.json({}));});
+  });
+  api.setSession(session);
+  const logout=api.signOut();
+  assert.equal(api.session,null);
+  assert.equal(authorization,'Bearer test-token');
+  finish();
+  await logout;
+});

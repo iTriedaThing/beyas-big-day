@@ -2,7 +2,7 @@
 
 Beya is Ben + Maya’s couple name. The individual partners are Ben and Maya.
 
-A private wedding planner for two people. GitHub Pages serves the browser app from `docs/`. Supabase provides authentication, Postgres, row-level security, live updates, and private photo storage. The planner covers budgeting, vendors, guests and RSVPs, checklists, scheduling, inspiration, the day-of itinerary, menus, and seating. Guest-entered replies and a month-grid calendar remain future work. See the [build brief](wedding-planner-build-brief.md).
+Our Big Day is a private wedding planner. Beya’s Big Day is the original couple’s wedding. GitHub Pages serves the browser app from `docs/`. Supabase provides authentication, Postgres, row-level security, live updates, and private photo storage. The planner covers budgeting, vendors, guests and RSVPs, checklists, scheduling, inspiration, the day-of itinerary, menus, and seating. See the [build brief](wedding-planner-build-brief.md) and [invite-only beta setup](BETA-ENROLLMENT.md).
 
 ## What ships
 
@@ -77,8 +77,8 @@ For a **mock-data UI preview**, use `node scripts/preview-fixture.mjs`, open `ht
 
 1. Use a separate wedding-planner Supabase project. This repository is configured for **beyas-big-day** (`nennjenlgfkblsmpkzfr`, US East). The approved [migration](supabase/migrations/20261113132432_shared_budget.sql) was applied there on November 13, 2026. Do not apply it a second time to that project; these steps also describe setup for a fresh project.
 2. For a fresh project, apply the migration once using your installed Supabase CLI’s migration workflow after reviewing its current `--help`, or a migration tool that records history. The file was created with CLI **v3.1.0**; its version now matches the history recorded by Supabase’s migration tool. Do not run `tests/bootstrap.sql` on Supabase: it is only a disposable plain-Postgres Auth/role stub.
-3. In Auth, enable email/password sign-in. Create/confirm two partner users and give each their own password through a secure account setup process. Disable public signup for this private release. The frontend has no signup or invitation-management flow; account creation and membership changes remain administrative. It supports **Forgot password? → reset email → choose a new password → sign in**, using the default Supabase implicit email-link flow.
-4. Copy [provision.example.sql](supabase/provision.example.sql) into the SQL editor, substitute the two Auth UUIDs, review names/currency/time zone, and run it once. It creates a private wedding, two memberships, and blank starter categories. Record the returned wedding UUID for access checks. Membership changes remain administrative; browser users cannot grant access or create weddings.
+3. For an administratively provisioned wedding, enable email/password sign-in, provision the partner accounts, and keep signup disabled. For invite-only beta enrollment, configure the signup hook and verified email flow in [the rollout guide](BETA-ENROLLMENT.md). Password recovery uses the default Supabase implicit email-link flow.
+4. For manual provisioning on a fresh project, substitute the two Auth UUIDs in [provision.example.sql](supabase/provision.example.sql), review the names, currency and time zone, and run it once. It creates a wedding, two memberships and blank starter categories. Record the returned wedding UUID for access checks. Beta participants create their wedding by accepting an operator invitation.
 
    The configured `beyas-big-day` project already has the shared wedding, Ben and Maya’s memberships, and nine starter categories, provisioned on November 13, 2026. Do not run provisioning again there. Each partner must confirm their own email before signing in.
 5. Set `supabaseUrl` and `publishableKey` in [docs/config.js](docs/config.js). Only the project URL and `sb_publishable_…` key belong in the public repository. Never use a secret or service-role key. This frontend supports hosted `https://<ref>.supabase.co` projects; custom domains/self-hosted Auth require corresponding URL/CSP changes and verification.
@@ -121,7 +121,7 @@ Routine completed units of work are committed and related commits are pushed tog
 - **Android Chrome** opens the install action from its browser menu.
 - **iPhone Safari** offers **Share → Add to Home Screen**. Turn on **Open as Web App** if shown and tap **Add**. iPhone Chrome also offers **Add to Home Screen** from Share.
 
-Open **The Big Day** from the home screen and sign in with your existing account. The planner uses its existing online connection.
+Open **Our Big Day** from the home screen and sign in with your existing account. The planner uses its existing online connection.
 
 ## Data and calculation rules
 

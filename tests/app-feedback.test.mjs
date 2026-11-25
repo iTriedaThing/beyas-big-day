@@ -24,7 +24,7 @@ test('feedback flows render and save through the app; Forecast survives polling 
     querySelector(){return new Element('button');}
     showModal(){this.open=true;}
     close(){this.open=false;this.listeners.get('close')?.();}
-    reset(){}scrollIntoView(){}focus(){}setSelectionRange(){}
+    reset(){}scrollIntoView(){}focus(){}select(){}setSelectionRange(){}
     addEventListener(name,handler){this.listeners.set(name,handler);}
   }
   const el=id=>{if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);};
@@ -38,9 +38,22 @@ test('feedback flows render and save through the app; Forecast survives polling 
     fetch:async()=>{throw new Error('Unexpected real network request in app fixture');}
   });
   installMock(menuEstimate);const mockFetch=globalThis.fetch;
-  let historyDelay, snapshotDelay;
+  let historyDelay, snapshotDelay, secondWedding;
   globalThis.fetch=async(url,options)=>{
     const response=await mockFetch(String(url).replace(config.supabaseUrl,'https://fixture.supabase.co'),options);
+    if(secondWedding && String(url).endsWith('/rpc/planner_access')){
+      const access=await response.json();
+      access.weddings.push(secondWedding);
+      return Response.json(access);
+    }
+    if(secondWedding && String(url).endsWith('/rpc/budget_snapshot') && JSON.parse(options.body).w===secondWedding.id){
+      const snapshot=await response.json();
+      snapshot.wedding={...snapshot.wedding,...secondWedding};
+      for(const key of Object.keys(snapshot))if(Array.isArray(snapshot[key]))snapshot[key]=[];
+      snapshot.invitations=[{id:'second-household',household_name:'Second household'}];
+      snapshot.guests=[{id:'second-guest',invitation_id:'second-household',name:'Second-only guest'}];
+      return Response.json(snapshot);
+    }
     if(historyDelay&&String(url).includes('/record_history?'))await historyDelay;
     if(snapshotDelay&&String(url).includes('/rpc/budget_snapshot'))await snapshotDelay;
     return response;
@@ -154,4 +167,38 @@ test('feedback flows render and save through the app; Forecast survives polling 
   await click('tab-guests');assert.ok(!el('main').innerHTML.includes(privateQuery));
   await click('tab-budget');await click('expense-delete','catering');assert.match(el('fields').innerHTML,/quotes, installments, and payments/);
   await submit({confirm:'DELETE'});assert.ok(!el('main').innerHTML.includes('Deposit confirmed'));
+  await click('wedding-access');
+  assert.match(el('main').innerHTML,/Your Big Days/);
+  assert.doesNotMatch(el('main').innerHTML,/Garden Table Catering/);
+  const issue=el('issue-planner-invite');
+  issue.values={target:'new',recipient:'founder@example.invalid'};
+  await issue.onsubmit({preventDefault(){},currentTarget:issue});
+  assert.match(el('main').innerHTML,/Share this invitation/);
+  const link=el('main').innerHTML.match(/data-action="revoke-planner-invite" data-id="([^"]+)"/)[1];
+  await click('revoke-planner-invite',link);
+  assert.doesNotMatch(el('main').innerHTML,/founder@example.invalid/);
+  await click('open-wedding','10000000-0000-0000-0000-000000000001');
+  assert.match(el('main').innerHTML,/Budget vs. paid/);
+  let exported;
+  globalThis.document.createElement=()=>({click(){exported=this.href;}});
+  await click('guests-export');
+  assert.match(await (await previous.get('fetch').value(exported)).text(),/Alex Rivera/);
+  URL.revokeObjectURL(exported);
+  secondWedding={id:'20000000-0000-0000-0000-000000000002',name:'Second wedding'};
+  let finishOldRefresh;
+  snapshotDelay=new Promise(resolve=>{finishOldRefresh=resolve;});
+  poll.fn();await settle();
+  await click('wedding-access');
+  snapshotDelay=null;
+  await click('open-wedding',secondWedding.id);
+  finishOldRefresh();await settle();
+  assert.equal(document.title,'Second wedding · Our Big Day');
+  await click('guests-export');
+  const secondCSV=await (await previous.get('fetch').value(exported)).text();
+  URL.revokeObjectURL(exported);
+  assert.match(secondCSV,/Second-only guest/);
+  assert.doesNotMatch(secondCSV,/Alex Rivera/);
+  await click('logout');
+  assert.equal(document.title,'Our Big Day');
+  assert.doesNotMatch(el('main').innerHTML,/Second wedding|Second-only guest/);
 });

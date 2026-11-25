@@ -1,6 +1,7 @@
 import {renderSeating} from './seating.js';
 import {seatingForm} from './seating-editor.js';
 import { config } from './config.js';
+import {invitationId,loadPlannerAccess,chooseWedding,renderAccess} from './enrollment.js';
 import { Api, subscribe, takeAuthRedirect } from './api.js';
 import { cents, money, quoteTotal, summarize, installmentBalance, csv, localDate } from './budget.js';
 import {escapeHTML as esc,button as btn,input,textarea as area,select} from './ui.js';
@@ -14,6 +15,7 @@ import {renderMenu,menuCourses,menuDiners,guestMeal,menuOptionRecord,menuEstimat
 
 const $ = s => document.querySelector(s);
 const initialAuthRedirect = takeAuthRedirect(window.location, window.history);
+let inviteLink=invitationId(window.location.href), access=null, hubOptions=null;
 const amount = (name, label, value = null, required = false) => input(name, label, value === null ? '' : (value / 100).toFixed(2), 'text', `inputmode="decimal" ${required ? 'required' : ''} maxlength="14"`);
 const dialog = $('#editor');
 const editor = setupEditor(dialog, $('#editor-body'));
@@ -68,6 +70,7 @@ function errorMessage(error) {
   return `${error.message}${api?.pending ? ' The outcome is unconfirmed. Retry the original save; its IDs are preserved in this tab.' : ''}`;
 }
 function resetPrivateUI() {
+  access=null; hubOptions=null; document.title='Our Big Day';
   tab='budget'; selectedExpense=''; selectedCategory=''; itineraryTrack='';
   guestFilters={search:'',rsvp:'',tag:'',table:'',view:'active'};
   menuFilters={group:'course',vendor:'',search:''};
@@ -86,13 +89,27 @@ function resetPrivateUI() {
 }
 function renderLogin(message = '') {
   $('#account').replaceChildren();
-  $('#main').innerHTML = `<section class="panel login"><p class="eyebrow">JUST THE TWO OF YOU</p><h1>Your day, together.</h1><p>Sign in to your private wedding planner. Your partner’s changes will appear here too.</p><form id="login">${input('email', 'Email', '', 'email', 'required autocomplete="username"')}${input('password', 'Password', '', 'password', 'required autocomplete="current-password"')}<p id="login-error" role="alert">${esc(message)}</p><button type="submit">Sign in</button></form><p>${btn('reset-request', 'Forgot password?')}</p><p class="muted">Use your administrator-provisioned account. No wedding access? Ask the person setting up your planner to add your account as a member.</p></section>`;
+  $('#main').innerHTML = `<section class="panel login"><h1>Your day, together.</h1><p>${inviteLink?'Sign in with the email address on your invitation, or create your account below.':'Sign in to your private wedding planner.'}</p><form id="login">${input('email','Email','','email','required autocomplete="username"')}${input('password','Password','','password','required autocomplete="current-password"')}<p id="login-error" role="alert">${esc(message)}</p><button type="submit">Sign in</button></form><p>${btn('reset-request','Forgot password?')}</p>${inviteLink?btn('register-invited','Create invited account'):'<p class="muted">New to Our Big Day? Open the invitation link shared with you.</p>'}</section>`;
   $('#login').onsubmit = async event => {
     event.preventDefault(); const form = event.currentTarget, fields = new FormData(form);
     form.querySelector('button').disabled = true;
     try { await api.signIn(fields.get('email').trim(), fields.get('password')); form.reset(); await start(); }
     catch (error) { $('#login-error').textContent = error.message; }
     finally { if (form.isConnected) form.querySelector('button').disabled = false; }
+  };
+}
+function renderRegistration() {
+  if (!inviteLink) return renderLogin();
+  $('#main').innerHTML=`<section class="panel login"><h1>Create your account</h1><form id="register-invited">${input('email','Invited email address','','email','required autocomplete="email"')}${input('password','Choose a password','','password','required minlength="8" autocomplete="new-password"')}<p>We’ll send an email to confirm this address.</p><p id="register-error" role="alert"></p><button type="submit">Create account</button></form><p>${btn('back-to-login','Back to sign in')}</p></section>`;
+  $('#register-invited').onsubmit=async event=>{
+    event.preventDefault();
+    const form=event.currentTarget, fields=new FormData(form), button=form.querySelector('button');
+    button.disabled=true;
+    try {
+      await api.registerInvited(fields.get('email').trim(),fields.get('password'),inviteLink,window.location.origin+window.location.pathname);
+      if (form.isConnected) renderLogin('Check your email to confirm your account. If you already have an account, sign in or reset your password.');
+    } catch(error) { if (form.isConnected) $('#register-error').textContent=error.message; }
+    finally { button.disabled=false; }
   };
 }
 function renderResetRequest() {
@@ -141,30 +158,68 @@ async function finishAuthRedirect(parameters) {
   catch (error) { api.setSession(null); resetPrivateUI(); renderLogin(error.message); }
   finally { handlingAuthRedirect = false; }
 }
-async function start() {
+async function start(options={}) {
   resetPrivateUI();
   if (!api.session) { renderLogin(); return; }
   if (api.session.recovery) { renderPasswordChange(); return; }
   const epoch = sessionEpoch;
-  $('#main').innerHTML = '<p>Loading your shared budget…</p>';
+  $('#main').innerHTML = '<p>Loading your planner…</p>';
   try {
-    const weddings = await api.request('weddings?select=id,name');
+    const next=await loadPlannerAccess(api,inviteLink);
     if (epoch !== sessionEpoch) return;
-    if (weddings.length !== 1) {
-      $('#main').innerHTML = '<section class="panel"><h1>No single wedding assigned</h1><p>Your administrator must assign your account to exactly one wedding for this release. No wedding records have been loaded.</p></section>';
-      renderAccount(); return;
+    access=next;
+    const chosen=chooseWedding(access,{...options,linkId:inviteLink});
+    if (!chosen) {
+      renderAccount();
+      if (api.pending) {
+        $('#main').innerHTML=`<section class="panel"><h1>Finish your pending save</h1><p>Confirm the original save before choosing a wedding.</p>${btn('access-retry','Retry original save')}</section>`;
+      } else showAccess(options);
+      return;
     }
-    weddingId = weddings[0].id;
+    clearInviteLink();
+    weddingId=chosen;
     await reload();
     if (epoch === sessionEpoch && data) connectLive();
   } catch (error) {
     if (epoch !== sessionEpoch) return;
     if (!api.session) renderLogin(error.message);
-    else { $('#main').innerHTML = `<section class="panel"><h1>Couldn’t load your budget</h1><p>${esc(error.message)}</p>${btn('start', 'Try again')}</section>`; renderAccount(); }
+    else { $('#main').innerHTML = `<section class="panel"><h1>Couldn’t load your planner</h1><p>${esc(error.message)}</p>${btn('start', 'Try again')}</section>`; renderAccount(); }
   }
 }
 function renderAccount() {
-  $('#account').innerHTML = api.session ? `${esc(api.session.user.email)} ${btn('logout', 'Sign out')}` : '';
+  $('#account').innerHTML = api.session ? `${esc(api.session.user.email)} ${data&&(access?.enabled||access?.weddings.length>1)?btn('wedding-access','Weddings & invitations'):''} ${btn('logout','Sign out')}` : '';
+}
+function clearInviteLink() {
+  if (!inviteLink) return;
+  const url=new URL(window.location.href); url.searchParams.delete('invitation');
+  window.history.replaceState(null,'',url.pathname+url.search+url.hash); inviteLink=null;
+}
+function showAccess(options={}) {
+  hubOptions=options;
+  $('#main').innerHTML=renderAccess(access,{...options,linkId:inviteLink,origin:window.location.href});
+  const accept=$('#accept-planner-invite'), issue=$('#issue-planner-invite');
+  if (accept) accept.onsubmit=e=>submitAccess(e,'accept_planner_invite',f=>({invitation:accept.dataset.id,member_name:f.member_name,wedding_name:f.wedding_name||null,zone:f.zone||null}));
+  if (issue) issue.onsubmit=e=>submitAccess(e,'issue_planner_invite',f=>({w:f.target==='new'?null:f.target,recipient:f.recipient}));
+  const share=$('#f-share-link');
+  if (share) { share.focus(); share.select(); }
+}
+async function submitAccess(event,command,body) {
+  event.preventDefault();
+  const form=event.currentTarget, submit=form.querySelector('button'), epoch=sessionEpoch;
+  const args=body(Object.fromEntries(new FormData(form)));
+  submit.disabled=true;
+  try {
+    const id=await api.request('rpc/'+command,{method:'POST',body:args});
+    if (epoch!==sessionEpoch || !form.isConnected) return;
+    if (command==='accept_planner_invite') await start({wedding:id});
+    else await start({hub:true,issued:id,target:args.w||'new'});
+  } catch(error) {
+    if (epoch===sessionEpoch && form.isConnected) {
+      let alert=form.querySelector('[role="alert"]');
+      if (!alert) { alert=document.createElement('p');alert.setAttribute('role','alert');form.insertBefore(alert,submit); }
+      alert.textContent=error.message;
+    }
+  } finally { submit.disabled=false; }
 }
 function connectLive() {
   stopLive?.();
@@ -207,7 +262,8 @@ function render() {
   renderAccount();
   const section = plannerSections[tab];
   const primary = section.primary?.() ?? '';
-  $('#main').innerHTML = `<section class="intro"><div><p class="eyebrow">BEN + MAYA · A DAY THAT’S OURS</p><h1>${esc(data.wedding.name)}</h1><p class="intro-note">A little planning. A lot of love.</p>${countdown(data.wedding.wedding_date,today())}<p class="wedding-meta">${data.wedding.wedding_date?esc(displayDate(data.wedding.wedding_date)):'Our date is still a beautiful possibility'}<span>·</span>${esc(data.wedding.currency)}</p></div><div class="actions">${primary}</div></section>
+  document.title=data.wedding.name+' · Our Big Day';
+  $('#main').innerHTML = `<section class="intro"><div><p class="eyebrow">${data.members.map(m=>esc(m.display_name)).join(' + ')}</p><h1>${esc(data.wedding.name)}</h1><p class="intro-note">A little planning. A lot of love.</p>${countdown(data.wedding.wedding_date,today())}<p class="wedding-meta">${data.wedding.wedding_date?esc(displayDate(data.wedding.wedding_date)):'Our date is still a beautiful possibility'}<span>·</span>${esc(data.wedding.currency)}</p></div><div class="actions">${primary}</div></section>
     <div class="section-head utility-bar"><small id="sync" class="sync-status">${esc(syncStatus)}</small><div class="actions">${api.pending?btn('retry','Retry pending save'):''}${btn('refresh','Refresh')}${btn('settings','Wedding settings')}${btn('export','Budget CSVs')}</div></div>
     <nav class="planner-nav" id="planner-sections" aria-label="Planner sections">${Object.entries(plannerSections).map(([id,{label}],index)=>`<button type="button" data-action="tab-${id}" class="secondary" aria-pressed="${tab===id}"><span aria-hidden="true">${String(index+1).padStart(2,'0')}</span>${label}</button>`).join('')}</nav>
     ${section.render()}`;
@@ -670,7 +726,7 @@ function itineraryForm(id) {
     +'<p class="muted">Times follow the wedding time zone. An end time earlier than the start means the activity ends the next day.</p>'
     +input('track','Who / track',item?.track||'Together','text','required maxlength="100" list="itinerary-tracks"')
     +`<datalist id="itinerary-tracks">${itineraryTracks(data).map(t=>`<option value="${esc(t)}"></option>`).join('')}</datalist>`
-    +'<p class="muted">Use Ben, Maya, Together, or a custom label such as Wedding party. Parallel activities may share a time.</p>'
+    +'<p class="muted">Choose a planner member, Together, or a custom track such as Wedding party.</p>'
     +input('location','Location',item?.location||'','text','maxlength="500"')
     +select('vendor_id','Vendor / venue (optional)',[['','No vendor linked'],...opts(data.vendors)],item?.vendor_id||'')
     +area('notes','Notes',item?.notes||''),f=>{
@@ -726,6 +782,18 @@ function exportCSVs() {
   notify('Exported expense and payment CSVs. Allow multiple downloads if your browser asks. Amounts are integer cents.');
 }
 const actions = {
+  'register-invited':renderRegistration,
+  'wedding-access':()=>{if(api.pending)throw new Error('Retry the pending save before changing weddings.');return start({hub:true,target:weddingId});},
+  'access-refresh':()=>start({hub:true,target:hubOptions?.target}),
+  'access-retry':async()=>{const epoch=sessionEpoch;await api.retryPending();if(epoch===sessionEpoch)await start({hub:true});},
+  'open-wedding':id=>start({wedding:id}),
+  'choose-planner-invite':id=>showAccess({...hubOptions,selected:id,issued:null}),
+  'show-invite-link':id=>showAccess({...hubOptions,issued:id}),
+  'revoke-planner-invite':async id=>{
+    const epoch=sessionEpoch;
+    await api.request('rpc/revoke_planner_invite',{method:'POST',body:{invitation:id}});
+    if(epoch===sessionEpoch)await start({hub:true,target:hubOptions?.target});
+  },
   ...Object.fromEntries(Object.keys(plannerSections).map(id => [`tab-${id}`, () => {
     tab = id;
     render();
@@ -803,8 +871,8 @@ document.addEventListener('input',event=>{
 });
 $('#cancel').onclick = () => dialog.close();
 dialog.addEventListener('cancel',event => {if($('#save').disabled)event.preventDefault();});
-window.addEventListener('focus',() => {if(api?.session && !api.session.recovery && !handlingAuthRedirect) void (data ? reload() : start());});
-window.addEventListener('online',() => {if(api?.session && !api.session.recovery && !handlingAuthRedirect) void (data ? reload() : start());});
+window.addEventListener('focus',() => {if(api?.session && !api.session.recovery && !handlingAuthRedirect && !hubOptions) void (data ? reload() : start());});
+window.addEventListener('online',() => {if(api?.session && !api.session.recovery && !handlingAuthRedirect && !hubOptions) void (data ? reload() : start());});
 window.addEventListener('hashchange',() => {
   const parameters = takeAuthRedirect(window.location, window.history);
   if (api && parameters) void finishAuthRedirect(parameters);
