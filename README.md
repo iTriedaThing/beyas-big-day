@@ -2,7 +2,7 @@
 
 Beya is Ben + Maya’s couple name. The individual partners are Ben and Maya.
 
-Our Big Day is a private wedding planner. Beya’s Big Day is the original couple’s wedding. GitHub Pages serves the browser app from `docs/`. Supabase provides authentication, Postgres, row-level security, live updates, and private photo storage. The planner covers budgeting, vendors, guests and RSVPs, checklists, scheduling, inspiration, the day-of itinerary, menus, and seating. See the [build brief](wedding-planner-build-brief.md) and [invite-only beta setup](BETA-ENROLLMENT.md).
+Our Big Day is a private wedding planner. Beya’s Big Day is the original couple’s wedding. GitHub Pages serves the browser app from `docs/`. Supabase provides authentication, Postgres, row-level security, live updates, and private photo storage. The planner covers budgeting, vendors, guests and RSVPs, checklists, scheduling, inspiration, the day-of itinerary, menus, and seating. See the [build brief](wedding-planner-build-brief.md) and [beta enrollment runbook](BETA-ENROLLMENT-RUNBOOK.md).
 
 ## What ships
 
@@ -89,7 +89,7 @@ For a **mock-data UI preview**, use `node scripts/preview-fixture.mjs`, open `ht
 
 1. Use a separate wedding-planner Supabase project. This repository is configured for **beyas-big-day** (`nennjenlgfkblsmpkzfr`, US East). The approved [migration](supabase/migrations/20261113132432_shared_budget.sql) was applied there on November 13, 2026. Do not apply it a second time to that project; these steps also describe setup for a fresh project.
 2. For a fresh project, apply the migration once using your installed Supabase CLI’s migration workflow after reviewing its current `--help`, or a migration tool that records history. The file was created with CLI **v3.1.0**; its version now matches the history recorded by Supabase’s migration tool. Do not run `tests/bootstrap.sql` on Supabase: it is only a disposable plain-Postgres Auth/role stub.
-3. For an administratively provisioned wedding, enable email/password sign-in, provision the partner accounts, and keep signup disabled. For invite-only beta enrollment, configure the signup hook and verified email flow in [the rollout guide](BETA-ENROLLMENT.md). Password recovery uses the default Supabase implicit email-link flow.
+3. For an administratively provisioned wedding, enable email/password sign-in, provision the partner accounts, and keep signup disabled. For invite-only beta enrollment, configure the signup hook and verified email flow using the [beta enrollment runbook](BETA-ENROLLMENT-RUNBOOK.md). Password recovery uses the default Supabase implicit email-link flow.
 4. For manual provisioning on a fresh project, substitute the two Auth UUIDs in [provision.example.sql](supabase/provision.example.sql), review the names, currency and time zone, and run it once. It creates a wedding, two memberships and blank starter categories. Record the returned wedding UUID for access checks. Beta participants create their wedding by accepting an operator invitation.
 
    The configured `beyas-big-day` project already has the shared wedding, Ben and Maya’s memberships, and nine starter categories, provisioned on November 13, 2026. Do not run provisioning again there. Each partner must confirm their own email before signing in.
