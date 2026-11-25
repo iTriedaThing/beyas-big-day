@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {Api,subscribe} from '../docs/api.js';
+import {Api,realtimeTables,subscribe} from '../docs/api.js';
 import {chooseWedding,invitationId,invitationURL,loadPlannerAccess,renderAccess} from '../docs/enrollment.js';
 
 const id='160da7f3-cdc5-4869-9401-4bf647eb85a7';
@@ -81,13 +81,16 @@ test('switching weddings replaces every live filter and discards late events fro
   };
   const api={url:'https://fixture.supabase.co',key:'fixture',session:{access_token:'synthetic'}};
   const changes=[];
+  const tables=realtimeTables({planner_ready:true,feedback_ready:true,itinerary_ready:true,menu_ready:true,seating_ready:true,comparison_ready:true});
+  assert.ok(!realtimeTables({menu_ready:true}).includes('comparison_answers'));
   for(const wedding of ['first','second']){
-    const stop=subscribe(api,wedding,()=>changes.push(wedding),()=>{},true,true,true,true,true);
+    const stop=subscribe(api,wedding,()=>changes.push(wedding),()=>{},tables);
     t.after(stop);
     const socket=sockets.at(-1);
     socket.onopen();
     const filters=socket.last.payload.config.postgres_changes;
     assert.ok(filters.some(f=>f.table==='seating_changes'));
+    assert.ok(filters.some(f=>f.table==='comparison_answers'));
     assert.ok(filters.every(f=>f.filter===(f.table==='weddings'?'id':'wedding_id')+'=eq.'+wedding));
     const message={data:JSON.stringify({event:'postgres_changes'})};
     socket.onmessage(message);

@@ -4,9 +4,11 @@ import {renderSeating} from './seating.js';
 import {seatingForm} from './seating-editor.js';
 import { config } from './config.js';
 import {invitationId,loadPlannerAccess,chooseWedding,renderAccess} from './enrollment.js';
-import { Api, subscribe, takeAuthRedirect } from './api.js';
-import { cents, money, quoteTotal, summarize, installmentBalance, csv, localDate } from './budget.js';
+import { Api, realtimeTables, subscribe, takeAuthRedirect } from './api.js';
+import { cents, money, quoteTotal, quotePriceBasis, summarize, installmentBalance, csv, localDate } from './budget.js';
 import {escapeHTML as esc,button as btn,input,textarea as area,select} from './ui.js';
+import {setupComparison} from './comparison-editor.js';
+import {rememberComparisonViewport} from './comparison-view.js';
 import {setupEditor} from './editor.js';
 import {createPhotoCache} from './photo-cache.js';
 import {TASK_WINDOWS,DIETARY_FLAGS,GUEST_TAGS,STARTER_TASKS,householdGuests,guestSummary} from './planner.js';
@@ -57,6 +59,11 @@ const plannerSections = {
   },
   seating: {label:'Seating chart', render:() => renderSeating(data,seatingEvent,seatingUnit)}
 };
+const vendorComparison = setupComparison({
+  getData:() => data, openForm, insert, update, operation, reload,
+  show:() => { tab='vendors'; render(); },
+  openExpense:id => { selectedExpense=id; tab='budget'; render(); $('#expense-detail')?.scrollIntoView({block:'start'}); }
+});
 const menuPhotos = createPhotoCache(path => api.photo(path,{bucket:'menu-photos'}));
 const vendorPhotoCache = createPhotoCache(path => api.photo(path));
 const fmt = value => money(value, data.wedding.currency);
@@ -73,6 +80,7 @@ function errorMessage(error) {
   return `${error.message}${api?.pending ? ' The outcome is unconfirmed. Retry the original save; its IDs are preserved in this tab.' : ''}`;
 }
 function resetPrivateUI() {
+  vendorComparison.reset();
   access=null; hubOptions=null; document.title='Our Big Day';
   tab='budget'; selectedExpense=''; selectedCategory=''; itineraryTrack='';
   guestFilters={search:'',rsvp:'',tag:'',table:'',view:'active'};
@@ -228,7 +236,7 @@ async function submitAccess(event,command,body) {
 function connectLive() {
   stopLive?.();
   if (!weddingId || !api.session) return;
-  stopLive = subscribe(api, weddingId, () => reload(), status => { syncStatus = status; if ($('#sync')) $('#sync').textContent = status; },!!data?.planner_ready,!!data?.feedback_ready,!!data?.itinerary_ready,!!data?.menu_ready,!!data?.seating_ready);
+  stopLive = subscribe(api, weddingId, () => reload(), status => { syncStatus = status; if ($('#sync')) $('#sync').textContent = status; },realtimeTables(data));
 }
 async function reload() {
   if (loading) { loadAgain = true; return; }
@@ -238,14 +246,16 @@ async function reload() {
     const snapshot = await api.snapshot(weddingId);
     if (epoch !== sessionEpoch) return;
     if (!snapshot.wedding) { resetPrivateUI(); $('#main').innerHTML = '<h1>Wedding access removed</h1><p>Contact your administrator.</p>'; renderAccount(); return; }
-    const previousReady = data?.planner_ready, previousFeedback=data?.feedback_ready,previousItinerary=data?.itinerary_ready,previousMenu=data?.menu_ready,previousSeating=data?.seating_ready;
+    const subscriptionsChanged = stopLive && realtimeTables(data).join() !== realtimeTables(snapshot).join();
     data = {...snapshot,invitations:snapshot.invitations||[],guests:snapshot.guests||[],tasks:snapshot.tasks||[],events:snapshot.events||[],vendor_photos:snapshot.vendor_photos||[],itinerary_items:snapshot.itinerary_items||[],menu_courses:snapshot.menu_courses||[],menu_options:snapshot.menu_options||[],guest_meals:snapshot.guest_meals||[]};
     menuPhotos.retain(new Set(data.menu_options.map(dish => dish.photo_path)));
     vendorPhotoCache.retain(new Set(data.vendor_photos.map(photo => photo.storage_path)));
     if(selectedCategory&&!data.categories.some(c=>c.id===selectedCategory))selectedCategory='';
     if(itineraryTrack&&!itineraryTracks(data).includes(itineraryTrack))itineraryTrack='';
+    const restoreComparison = vendorComparison.open && rememberComparisonViewport();
     totals = summarize(data); render();
-    if (stopLive && (previousReady !== data.planner_ready||previousFeedback!==data.feedback_ready||previousItinerary!==data.itinerary_ready||previousMenu!==data.menu_ready||previousSeating!==data.seating_ready)) connectLive();
+    if (restoreComparison) restoreComparison();
+    if (subscriptionsChanged) connectLive();
   } catch (error) {
     if (epoch !== sessionEpoch) return;
     if (!api.session) { resetPrivateUI(); renderLogin('Session expired. Sign in again.'); }
@@ -344,12 +354,13 @@ function renderQuote(q, expense) {
   return `<article class="quote ${q.id === expense.preferred_quote_id ? 'preferred' : ''}">
     <h3>${esc(q.package_name)}</h3><p>${esc(vendorName(q.vendor_id))}</p><p class="muted">${esc([vendor?.contact_name,vendor?.email,vendor?.phone].filter(Boolean).join(' · '))} ${websiteLink(vendor?.website||'')}</p>
     <p class="amount">${fmt(quoteTotal(q))}</p>
-    <small>${q.pricing_basis === 'per_person' ? `${fmt(q.unit_cents)} per guest × ${q.headcount} guests` : 'Fixed package price'}</small>
+    <small>${quotePriceBasis(q,data.wedding.currency)}</small>
     <p>${esc(q.details)}</p><p>Rating: ${q.rating ? `${q.rating}/5` : 'Not rated'}</p><p>${esc(q.notes)}</p>
     ${booked ? '<p class="badge">BOOKED · preserved offer</p>' : `
       ${q.id === expense.preferred_quote_id ? '<p class="badge">PREFERRED</p>' : ''}
       <div class="actions">${btn('quote-edit', 'Edit quote', q.id)}
       ${expense.agreed_cents === null ? btn('prefer', 'Prefer this quote', q.id) + btn('book-quote', 'Book this package', q.id) : ''}</div>`}
+  ${data.comparison_ready?btn('compare-quote','Compare package',q.id):''}
   ${data.feedback_ready&&!booked?btn('quote-delete','Delete quote',q.id):''}</article>`;
 }
 function renderExpense(id) {
@@ -377,10 +388,11 @@ function renderVendorTours(tours) {
   return `<section class="vendor-tours"><h4>Scheduled tours</h4><ul>${tours.map(tour=>`<li><strong>${esc(tour.title)}</strong><br><time datetime="${esc(tour.date)}">${esc(displayDate(tour.date))}</time> · ${esc(tour.time || 'All day')}${tour.location?' · '+esc(tour.location):''}</li>`).join('')}</ul></section>`;
 }
 function renderVendors() {
+  if (data.comparison_ready && vendorComparison.open) return vendorComparison.render();
   const tours = data.feedback_ready ? upcomingVendorTours(data.events,today()) : [];
-  return `<section class="panel"><div class="section-head"><h2>Your vendors</h2>${btn('vendor-new','Add vendor','','')}</div><p class="muted">Contact details live here. Bookings and balances come from the same expenses as your budget.</p>${[...data.vendors].sort((a,b)=>(b.rating||0)-(a.rating||0)||a.name.localeCompare(b.name)).map(v => {
+  return `<section class="panel"><div class="section-head"><h2>Your vendors</h2><div class="actions">${data.comparison_ready?btn('compare-home','Compare vendors'):''}${btn('vendor-new','Add vendor','','')}</div></div><p class="muted">Contact details live here. Bookings and balances come from the same expenses as your budget.</p>${[...data.vendors].sort((a,b)=>(b.rating||0)-(a.rating||0)||a.name.localeCompare(b.name)).map(v => {
     const rows = totals.rows.filter(e => e.vendor_id === v.id && e.agreed_cents !== null);
-    return `<article class="panel"><div class="section-head"><h3>${esc(v.name)}</h3><div class="actions">${btn('vendor-edit','Edit details',v.id)}${data.feedback_ready?btn('photo-new','Attach picture',v.id)+btn('event-vendor','Schedule visit',v.id)+btn('vendor-delete','Delete',v.id):''}</div></div><p>${esc(v.contact_name)} · ${esc(v.email)} · ${esc(v.phone)}</p><p class="vendor-website">${websiteLink(v.website)}</p><p>${esc(v.vendor_kind==='venue'?'Venue':'Vendor')} · ${v.rating?`${v.rating}/5 overall rating`:'Not rated yet'}</p>${data.feedback_ready?renderVendorTours(tours.filter(tour=>tour.vendor_id===v.id)): ''}${v.next_step?`<p><strong>Next step</strong> · ${esc(v.next_step)}</p>`:''}${vendorPhotos(v.id)}<p>${esc(v.notes)}</p>${data.menu_ready?`<p>${data.menu_options.filter(o=>o.vendor_id===v.id).length} menu dishes ${btn('menu-vendor-open','View dishes',v.id)}</p>`:''}${rows.length ? expenseTable(rows) : '<p class="muted">No booked expenses yet.</p>'}</article>`;
+    return `<article class="panel"><div class="section-head"><h3>${esc(v.name)}</h3><div class="actions">${data.comparison_ready?btn('compare-vendor','Compare',v.id):''}${btn('vendor-edit','Edit details',v.id)}${data.feedback_ready?btn('photo-new','Attach picture',v.id)+btn('event-vendor','Schedule visit',v.id)+btn('vendor-delete','Delete',v.id):''}</div></div><p>${esc(v.contact_name)} · ${esc(v.email)} · ${esc(v.phone)}</p><p class="vendor-website">${websiteLink(v.website)}</p><p>${esc(v.vendor_kind==='venue'?'Venue':'Vendor')} · ${v.rating?`${v.rating}/5 overall rating`:'Not rated yet'}</p>${data.feedback_ready?renderVendorTours(tours.filter(tour=>tour.vendor_id===v.id)): ''}${v.next_step?`<p><strong>Next step</strong> · ${esc(v.next_step)}</p>`:''}${vendorPhotos(v.id)}<p>${esc(v.notes)}</p>${data.menu_ready?`<p>${data.menu_options.filter(o=>o.vendor_id===v.id).length} menu dishes ${btn('menu-vendor-open','View dishes',v.id)}</p>`:''}${rows.length ? expenseTable(rows) : '<p class="muted">No booked expenses yet.</p>'}</article>`;
   }).join('') || '<p class="empty">Add vendor contacts, then add packages to an expense to compare quotes.</p>'}</section><section class="panel"><h2>Compare offers by expense</h2>${expenseTable(totals.rows)}</section>${selectedExpense ? renderExpense(selectedExpense) : ''}`;
 }
 function openForm(title, fields, save) {
@@ -871,6 +883,7 @@ function exportCSVs() {
   notify('Exported expense and payment CSVs. Allow multiple downloads if your browser asks. Amounts are integer cents.');
 }
 const actions = {
+  ...vendorComparison.actions,
   'aisle-toggle':()=>{aisleOpen=!isAisleOpen();render();$(aisleOpen?'#aisle-title':'#ask-aisle')?.focus();},
   'aisle-close':()=>{aisleOpen=false;render();$('#ask-aisle')?.focus();},
   'aisle-settings':()=>{if(api.pending)throw new Error('Retry the pending save before editing details in Aisle.');settingsForm(true);},

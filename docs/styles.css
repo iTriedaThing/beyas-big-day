@@ -1,5 +1,6 @@
 @import url('./tokens.css');
 @import url('./seating.css');
+@import url('./comparison.css');
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html{scroll-behavior:smooth;scroll-padding-top:24px;scrollbar-gutter:stable}

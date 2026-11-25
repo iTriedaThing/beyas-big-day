@@ -193,14 +193,18 @@ export class Api {
 }
 
 // Supabase's documented Phoenix JSON protocol, with polling as a fallback.
-export function subscribe(api, wedding, onChange, onStatus, includePlanner = false, includeFeedback = false, includeItinerary = false, includeMenu = false, includeSeating = false) {
-  let closed = false, heartbeat, reconnect, socket, ref = 0;
+export function realtimeTables(snapshot) {
   const tables = ['weddings', 'wedding_members', 'categories', 'expenses', 'vendors', 'quotes', 'payments', 'installments', 'contract_amendments'];
-  if (includePlanner) tables.push('invitations', 'guests', 'tasks');
-  if (includeFeedback) tables.push('events','vendor_photos');
-  if (includeItinerary) tables.push('itinerary_items');
-  if (includeSeating) tables.push('seating_changes');
-  if (includeMenu) tables.push('menu_courses','menu_options','guest_meals');
+  if (snapshot?.planner_ready) tables.push('invitations','guests','tasks');
+  if (snapshot?.feedback_ready) tables.push('events','vendor_photos');
+  if (snapshot?.itinerary_ready) tables.push('itinerary_items');
+  if (snapshot?.seating_ready) tables.push('seating_changes');
+  if (snapshot?.menu_ready) tables.push('menu_courses','menu_options','guest_meals');
+  if (snapshot?.comparison_ready) tables.push('comparison_lists','comparison_criteria','comparison_options','comparison_answers');
+  return tables;
+}
+export function subscribe(api, wedding, onChange, onStatus, tables = realtimeTables()) {
+  let closed = false, heartbeat, reconnect, socket, ref = 0;
   function connect() {
     if (closed || !api.session) return;
     ref = 0;
