@@ -198,3 +198,12 @@ footer{text-align:center;font:italic 17px Georgia,serif;color:var(--plum);paddin
 .enrollment form>button{margin-top:1rem}
 .enrollment input,.enrollment select{font-size:1rem}
 .enrollment [role="alert"]{font-weight:600}
+
+.aisle{border-top:4px solid var(--green);overflow-wrap:anywhere}
+.aisle .section-head{gap:12px}
+.aisle-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:16px;margin:18px 0}
+.aisle-options section{border:1px solid var(--line);border-radius:14px;padding:18px}
+.aisle-options h3{margin:0}
+.aisle-options select{margin-bottom:10px}
+.aisle-options button{margin-inline-end:6px;margin-block-end:4px}
+.aisle-footer{margin-top:16px}

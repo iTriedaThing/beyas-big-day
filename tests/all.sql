@@ -28,3 +28,4 @@
 \ir guest-import-access.sql
 \ir ../supabase/migrations/20261125004206_private_wedding_enrollment.sql
 \ir enrollment-access.sql
+\ir aisle-access.sql
