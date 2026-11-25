@@ -13,6 +13,8 @@ export function installMock(menuEstimate) {
   };
   fixture.planner_ready=true;fixture.feedback_ready=true;fixture.itinerary_ready=true;
   fixture.guest_import_ready=true;
+  fixture.comparison_ready=true;
+  for (const table of ['comparison_lists','comparison_options','comparison_criteria','comparison_answers']) fixture[table]=[];
   const guestImports=new Set();
   fixture.menu_ready=true;fixture.menu_courses=[
     {id:'main',wedding_id:w,name:'Mains',sort_order:1,choices_offered:true,version:1},
@@ -189,6 +191,16 @@ export function installMock(menuEstimate) {
         for(const g of h.people)fixture.guests.push({id:crypto.randomUUID(),wedding_id:w,invitation_id:id,name:g.name||null,is_companion:g.companion,rsvp:g.rsvp,tag:'',gift_received:false,dietary_flags:[],dietary_notes:g.dietary_notes,caterer_confirmation:'',archived:false,version:1});
       }
       guestImports.add(body.request_id);return Response.json(null);
+    }
+    if(path==='rpc/create_comparison'){
+      if(!fixture.comparison_lists.some(l=>l.id===body.list)){
+        fixture.comparison_lists.push({id:body.list,wedding_id:w,name:body.title});
+        body.starters.forEach((c,index)=>fixture.comparison_criteria.push({...c,id:crypto.randomUUID(),wedding_id:w,list_id:body.list,
+          position:(index+1)*10,must_have:false,version:1}));
+        if(body.vendor)fixture.comparison_options.push({id:crypto.randomUUID(),wedding_id:w,list_id:body.list,
+          vendor_id:body.vendor,quote_id:body.quote,selected:true,version:1});
+      }
+      return Response.json(body.list);
     }
     if(path==='rpc/create_household'){
       if(!fixture.invitations.some(i=>i.id===body.i.id))fixture.invitations.push({...body.i,archived:false,version:1});

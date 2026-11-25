@@ -1,0 +1,47 @@
+.comparison-panel .comparison-filters { margin: 1.25rem 0; }
+.comparison-panel button[aria-pressed="true"] { background: var(--green); color: white; }
+.comparison-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overscroll-behavior-x: contain;
+}
+.comparison-table { border-collapse: separate; border-spacing: 0; }
+.comparison-table th, .comparison-table td {
+  min-width: 12rem;
+  max-width: 20rem;
+  padding: .85rem;
+  border-right: 1px solid var(--line);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: normal;
+}
+.comparison-table th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--paper);
+  min-width: 8rem;
+  max-width: 12rem;
+}
+.comparison-table thead { background: var(--sage-light); }
+.comparison-table h3, .comparison-table p { margin: 0 0 .5rem; }
+.comparison-table p { white-space: pre-line; }
+.comparison-table small, .comparison-table strong { display: block; }
+.comparison-table small { font-size: .78rem; margin: .25rem 0; }
+.comparison-summary { border-top: 1px solid var(--line); margin-top: .7rem; padding-top: .7rem; }
+.comparison-table summary { cursor: pointer; margin-top: .7rem; }
+.comparison-table button { min-height: 36px; margin: .25rem .25rem .25rem 0; }
+.comparison-table .comparison-priority { color: var(--purple); }
+.comparison-status { display: inline-block; padding: .25rem .55rem; border-radius: .4rem; background: var(--paper); }
+.comparison-status.status-met { background: var(--sage-light); color: var(--green); }
+.comparison-status.status-decide, .comparison-status.status-ask { background: var(--lavender); color: var(--purple); }
+@media (max-width: 600px) {
+  .comparison-table th, .comparison-table td { min-width: 9rem; padding: .6rem; }
+  .comparison-table th:first-child { min-width: 6rem; max-width: 7rem; }
+  .comparison-table button, .comparison-table summary { min-height: 44px; }
+}

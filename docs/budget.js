@@ -11,6 +11,11 @@ export function cents(value, optional = false) {
 export function quoteTotal(quote) {
   return quote.unit_cents * (quote.pricing_basis === 'per_person' ? quote.headcount : 1);
 }
+export function quotePriceBasis(quote, currency) {
+  return quote.pricing_basis === 'per_person'
+    ? `${money(quote.unit_cents, currency)} per guest × ${quote.headcount} guests`
+    : 'Fixed package price';
+}
 function netPayments(payments, include) {
   let total = 0;
   for (const payment of payments) {

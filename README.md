@@ -24,6 +24,19 @@ Our Big Day is a private wedding planner. Beya’s Big Day is the original coupl
 
 ## Local development
 
+### Vendor and package comparisons
+
+In **Vendors & quotes**, choose **Compare vendors**, or choose **Compare** on a vendor or **Compare package** on a quote. Open a shared checklist or start one from the venue or caterer template. **Custom** starts a blank checklist for another vendor category. Both wedding members can edit the same criteria, display order and must-have priorities.
+
+Add a vendor column to record facts before receiving a quote. Add individual package columns to compare offers from the same or different vendors. Each package inherits the vendor answer for that checklist until someone enters a package-specific answer. **Unknown** records an open package question. **Use vendor answer** clears the override. Removing a column keeps its answers available when the column is added again.
+
+Each column summarizes its must-haves. An included item initially counts as met. An extra fee or conditional offer stays **To decide** until the couple records their decision. **To ask** collects unanswered questions for a tour. **Differences** includes differences in terms, even when both options meet the criterion. Package prices use the quote’s saved basis and headcount. Use **Option actions** to edit an eligible quote or visit its expense to choose a preferred offer or record a booking.
+
+The [comparison migration](supabase/migrations/20261125113849_vendor_comparison.sql) adds wedding-scoped checklists, criteria, selected columns and answers. Comparison controls appear when the database advertises `comparison_ready`. Apply the migration to a shared environment only with explicit target approval. Brochure import and Aisle Assist extraction are future work.
+
+- `docs/vendor-comparison.js` defines starter questions, inheritance, counts and filters. `docs/comparison-view.js` renders the matrix. `docs/comparison-editor.js` connects edits to the planner’s existing forms and save path.
+- Run `node --test tests/*.test.mjs` and `node scripts/check.mjs` for the frontend. Run `psql -X -d <fresh-disposable-local-database> -f tests/all.sql` for migration, access and consistency tests. The SQL bootstrap is for local test databases only.
+
 ### Aisle guided setup
 
 Use **Ask Aisle** from the planner to start, resume, or review setup. Newly created weddings open at the wedding details step. Aisle uses the same wedding settings, vendors, schedule, and CSV import as the planner. It recognizes existing guests and a vendor with a next step or open scheduled visit. Setup progress is shared across wedding members and devices. After setup, Aisle suggests a next action based on the planner’s data.
