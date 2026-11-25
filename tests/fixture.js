@@ -2,7 +2,7 @@
 export function installMock(menuEstimate) {
   const w = '10000000-0000-0000-0000-000000000001', a = '00000000-0000-0000-0000-000000000001', b = '00000000-0000-0000-0000-000000000002';
   const fixture = {
-    wedding:{id:w,name:'Beya’s big day',currency:'USD',cap_cents:1000000,wedding_date:'2027-06-19',planning_headcount:90,time_zone:'America/New_York',version:1},
+    wedding:{id:w,name:'Beya’s big day',currency:'USD',cap_cents:1000000,wedding_date:'2027-06-19',planning_headcount:90,time_zone:'America/New_York',version:1,aisle_step:null,aisle_paused:false},
     members:[{wedding_id:w,user_id:a,display_name:'Maya'},{wedding_id:w,user_id:b,display_name:'Ben'}],
     categories:[{id:'food',wedding_id:w,name:'Food',version:1},{id:'attire',wedding_id:w,name:'Attire',version:1}],
     vendors:[{id:'vendor',wedding_id:w,name:'Garden Table Catering',contact_name:'Alex',email:'alex@example.invalid',phone:'555-0100',website:'https://example.invalid',notes:'Seasonal menu. Includes service.',version:1}],

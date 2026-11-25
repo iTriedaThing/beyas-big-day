@@ -1,4 +1,5 @@
 import {prepareGuestImport,maxFileBytes} from './guest-import.js';
+import {aisleReady,aisleStartsOpen,renderAisle} from './aisle.js';
 import {renderSeating} from './seating.js';
 import {seatingForm} from './seating-editor.js';
 import { config } from './config.js';
@@ -25,6 +26,7 @@ let sessionEpoch = 0, handlingAuthRedirect = false;
 let guestFilters, menuFilters;
 let taskFilter = 'all', comparison = 'paid', scheduleFilter = 'upcoming', itineraryTrack='';
 let seatingEvent='reception', seatingUnit='';
+let aisleOpen=null;
 const budgetActions = () => btn('expense-new','+ Add expense','','') + btn('payment-new','Record payment');
 const plannerSections = {
   budget: {label:'Budget', render:renderBudget, primary:budgetActions},
@@ -76,6 +78,7 @@ function resetPrivateUI() {
   guestFilters={search:'',rsvp:'',tag:'',table:'',view:'active'};
   menuFilters={group:'course',vendor:'',search:''};
   seatingEvent='reception'; seatingUnit='';
+  aisleOpen=null;
   $('#back-to-top').hidden=true;
   document.body.classList.toggle('printing-itinerary',false);
   document.body.classList.toggle('printing-menu',false);
@@ -256,6 +259,9 @@ async function reload() {
     }
   }
 }
+function isAisleOpen() {
+  return aisleReady(data.wedding) && (aisleOpen ?? aisleStartsOpen(data.wedding));
+}
 function render() {
   document.body.classList.toggle('printing-itinerary',tab==='itinerary');
   document.body.classList.toggle('printing-menu',tab==='menu');
@@ -263,9 +269,11 @@ function render() {
   renderAccount();
   const section = plannerSections[tab];
   const primary = section.primary?.() ?? '';
+  const showAisle = isAisleOpen();
   document.title=data.wedding.name+' · Our Big Day';
   $('#main').innerHTML = `<section class="intro"><div><p class="eyebrow">${data.members.map(m=>esc(m.display_name)).join(' + ')}</p><h1>${esc(data.wedding.name)}</h1><p class="intro-note">A little planning. A lot of love.</p>${countdown(data.wedding.wedding_date,today())}<p class="wedding-meta">${data.wedding.wedding_date?esc(displayDate(data.wedding.wedding_date)):'Our date is still a beautiful possibility'}<span>·</span>${esc(data.wedding.currency)}</p></div><div class="actions">${primary}</div></section>
-    <div class="section-head utility-bar"><small id="sync" class="sync-status">${esc(syncStatus)}</small><div class="actions">${api.pending?btn('retry','Retry pending save'):''}${btn('refresh','Refresh')}${btn('settings','Wedding settings')}${btn('export','Budget CSVs')}</div></div>
+    <div class="section-head utility-bar"><small id="sync" class="sync-status">${esc(syncStatus)}</small><div class="actions">${api.pending?btn('retry','Retry pending save'):''}${btn('refresh','Refresh')}${aisleReady(data.wedding)?`<button type="button" class="secondary" id="ask-aisle" data-action="aisle-toggle" aria-expanded="${showAisle}">Ask Aisle</button>`:''}${btn('settings','Wedding settings')}${btn('export','Budget CSVs')}</div></div>
+    ${showAisle ? renderAisle(data,$('#f-aisle-vendor')?.value) : ''}
     <nav class="planner-nav" id="planner-sections" aria-label="Planner sections">${Object.entries(plannerSections).map(([id,{label}],index)=>`<button type="button" data-action="tab-${id}" class="secondary" aria-pressed="${tab===id}"><span aria-hidden="true">${String(index+1).padStart(2,'0')}</span>${label}</button>`).join('')}</nav>
     ${section.render()}`;
   updateBackToTop();
@@ -372,7 +380,7 @@ function renderVendors() {
   const tours = data.feedback_ready ? upcomingVendorTours(data.events,today()) : [];
   return `<section class="panel"><div class="section-head"><h2>Your vendors</h2>${btn('vendor-new','Add vendor','','')}</div><p class="muted">Contact details live here. Bookings and balances come from the same expenses as your budget.</p>${[...data.vendors].sort((a,b)=>(b.rating||0)-(a.rating||0)||a.name.localeCompare(b.name)).map(v => {
     const rows = totals.rows.filter(e => e.vendor_id === v.id && e.agreed_cents !== null);
-    return `<article class="panel"><div class="section-head"><h3>${esc(v.name)}</h3><div class="actions">${btn('vendor-edit','Edit details',v.id)}${data.feedback_ready?btn('photo-new','Attach picture',v.id)+btn('event-vendor','Schedule visit',v.id)+btn('vendor-delete','Delete',v.id):''}</div></div><p>${esc(v.contact_name)} · ${esc(v.email)} · ${esc(v.phone)}</p><p class="vendor-website">${websiteLink(v.website)}</p><p>${esc(v.vendor_kind==='venue'?'Venue':'Vendor')} · ${v.rating?`${v.rating}/5 overall rating`:'Not rated yet'}</p>${data.feedback_ready?renderVendorTours(tours.filter(tour=>tour.vendor_id===v.id)): ''}${vendorPhotos(v.id)}<p>${esc(v.notes)}</p>${data.menu_ready?`<p>${data.menu_options.filter(o=>o.vendor_id===v.id).length} menu dishes ${btn('menu-vendor-open','View dishes',v.id)}</p>`:''}${rows.length ? expenseTable(rows) : '<p class="muted">No booked expenses yet.</p>'}</article>`;
+    return `<article class="panel"><div class="section-head"><h3>${esc(v.name)}</h3><div class="actions">${btn('vendor-edit','Edit details',v.id)}${data.feedback_ready?btn('photo-new','Attach picture',v.id)+btn('event-vendor','Schedule visit',v.id)+btn('vendor-delete','Delete',v.id):''}</div></div><p>${esc(v.contact_name)} · ${esc(v.email)} · ${esc(v.phone)}</p><p class="vendor-website">${websiteLink(v.website)}</p><p>${esc(v.vendor_kind==='venue'?'Venue':'Vendor')} · ${v.rating?`${v.rating}/5 overall rating`:'Not rated yet'}</p>${data.feedback_ready?renderVendorTours(tours.filter(tour=>tour.vendor_id===v.id)): ''}${v.next_step?`<p><strong>Next step</strong> · ${esc(v.next_step)}</p>`:''}${vendorPhotos(v.id)}<p>${esc(v.notes)}</p>${data.menu_ready?`<p>${data.menu_options.filter(o=>o.vendor_id===v.id).length} menu dishes ${btn('menu-vendor-open','View dishes',v.id)}</p>`:''}${rows.length ? expenseTable(rows) : '<p class="muted">No booked expenses yet.</p>'}</article>`;
   }).join('') || '<p class="empty">Add vendor contacts, then add packages to an expense to compare quotes.</p>'}</section><section class="panel"><h2>Compare offers by expense</h2>${expenseTable(totals.rows)}</section>${selectedExpense ? renderExpense(selectedExpense) : ''}`;
 }
 function openForm(title, fields, save) {
@@ -404,13 +412,36 @@ function operation(path, body, method = 'POST', prefer = 'return=representation'
 function update(table, record, changes) {
   return operation(`${table}?id=eq.${record.id}&version=eq.${record.version}`, { ...changes, version: record.version }, 'PATCH');
 }
+async function saveAisle(changes) {
+  if (api.pending) throw new Error('Retry the pending save before updating Aisle.');
+  const epoch = sessionEpoch;
+  aisleOpen=true;
+  await update('weddings', data.wedding, changes);
+  if (epoch !== sessionEpoch) return;
+  await reload();
+  if (epoch === sessionEpoch && isAisleOpen()) $('#aisle-title')?.focus();
+}
 function insert(table, record) {
   return operation(table, { id: crypto.randomUUID(), wedding_id: weddingId, ...record }, 'POST', 'return=representation,resolution=ignore-duplicates');
 }
-function settingsForm() {
+function settingsForm(guided = false) {
   const w = data.wedding;
   const currencyLocked=data.expenses.length||data.menu_options.some(o=>o.unit_cents!==null);
-  openForm('Wedding settings', input('name','Wedding name',w.name,'text','required maxlength="120"') + select('currency','Currency (two decimal places)', ['USD','CAD','GBP','EUR','AUD','NZD'].map(c => [c,c]),w.currency) + amount('cap','Wedding cap',w.cap_cents,true) + input('wedding_date','Wedding date (optional)',w.wedding_date || '','date') + (data.planner_ready?input('planning_headcount','Planning guest count (optional)',w.planning_headcount??'','number','min="0" max="100000" step="1"'):'') + select('time_zone','Time zone',timeZones(w.time_zone),w.time_zone) + '<p class="muted">Currency is fixed after your first expense or recorded menu price. Dates follow your wedding’s time zone. Planning headcount is a starting point for new per-guest quotes; existing offers keep their saved count.</p>', f => update('weddings',w,{name:f.name.trim(),currency:f.currency,cap_cents:cents(f.cap),wedding_date:f.wedding_date || null,time_zone:f.time_zone.trim(),...(data.planner_ready?{planning_headcount:f.planning_headcount===''?null:Number(f.planning_headcount)}:{})}));
+  const advanceAisle = aisleReady(w) && (w.aisle_step === 'settings' || (guided && !w.aisle_step));
+  openForm(guided ? 'Your wedding details' : 'Wedding settings',
+    input('name','Wedding name',w.name,'text','required maxlength="120"')
+    + select('currency','Currency (two decimal places)', ['USD','CAD','GBP','EUR','AUD','NZD'].map(c => [c,c]),w.currency)
+    + amount('cap',guided?'Wedding budget (optional)':'Wedding cap',guided && !w.cap_cents ? null : w.cap_cents,!guided)
+    + input('wedding_date','Wedding date (optional)',w.wedding_date || '','date')
+    + (data.planner_ready?input('planning_headcount','Planning guest count (optional)',w.planning_headcount??'','number','min="0" max="100000" step="1"'):'')
+    + select('time_zone','Time zone',timeZones(w.time_zone),w.time_zone)
+    + '<p class="muted">Currency is fixed after your first expense or recorded menu price. Dates follow your wedding’s time zone. Planning headcount is a starting point for new per-guest quotes; existing offers keep their saved count.</p>',
+    f => update('weddings',w,{
+      name:f.name.trim(),currency:f.currency,cap_cents:cents(f.cap,guided) ?? 0,
+      wedding_date:f.wedding_date || null,time_zone:f.time_zone.trim(),
+      ...(data.planner_ready?{planning_headcount:f.planning_headcount===''?null:Number(f.planning_headcount)}:{}),
+      ...(advanceAisle?{aisle_step:'first_action'}:{})
+    }));
   if (currencyLocked) $('#f-currency').disabled = true;
   // Disabled controls are omitted from FormData; retain the original currency.
   if (currencyLocked) { const hidden = document.createElement('input'); hidden.type='hidden'; hidden.name='currency'; hidden.value=w.currency; $('#fields').append(hidden); }
@@ -545,9 +576,22 @@ function categoryForm(id) {
   const c = data.categories.find(c => c.id === id);
   openForm(c ? 'Rename category' : 'Add category',input('name','Category name',c?.name || '','text','required maxlength="100"'), f => c ? update('categories',c,{name:f.name.trim()}) : insert('categories',{name:f.name.trim()}));
 }
-function vendorForm(id) {
+function vendorForm(id, guided = false) {
   const v = data.vendors.find(v => v.id === id);
-  openForm(v ? 'Edit vendor' : 'Add vendor', input('name','Vendor name',v?.name || '','text','required maxlength="120"') + input('contact_name','Contact person',v?.contact_name) + input('email','Email',v?.email,'email') + input('phone','Phone',v?.phone,'tel') + input('website','Website',v?.website,'url') +(data.feedback_ready?select('vendor_kind','Type',[['vendor','Vendor'],['venue','Venue']],v?.vendor_kind||'vendor')+select('rating','Overall rating',[['','Not rated'],...['1','2','3','4','5'].map(r=>[r,`${r}/5`])],String(v?.rating||'')):'')+ area('notes','Notes',v?.notes), f => {const record={...f,...(data.feedback_ready?{rating:f.rating?Number(f.rating):null}:{})};return v ? update('vendors',v,record) : insert('vendors',record);});
+  if (id && guided && !v) throw new Error('This vendor is no longer available. Refresh Aisle to choose another.');
+  const nextStep = aisleReady(data.wedding) ? input('next_step',guided?'What will you do next?':'Next step (optional)',v?.next_step||'','text',`maxlength="500" placeholder="Ask for a quote" ${guided?'required':''}`) : '';
+  openForm(guided && v ? 'Record a vendor follow-up' : v ? 'Edit vendor' : 'Add vendor',
+    input('name','Vendor name',v?.name || '','text','required maxlength="120"')
+    + nextStep + input('contact_name','Contact person',v?.contact_name)
+    + input('email','Email',v?.email,'email') + input('phone','Phone',v?.phone,'tel') + input('website','Website',v?.website,'url')
+    + (data.feedback_ready?select('vendor_kind','Type',[['vendor','Vendor'],['venue','Venue']],v?.vendor_kind||'vendor')
+      + select('rating','Overall rating',[['','Not rated'],...['1','2','3','4','5'].map(r=>[r,`${r}/5`])],String(v?.rating||'')):'')
+    + area('notes','Notes',v?.notes), f => {
+      const record={...f,...(data.feedback_ready?{rating:f.rating?Number(f.rating):null}:{})};
+      if ('next_step' in f) record.next_step=f.next_step.trim() || null;
+      if (guided && !record.next_step) throw new Error('Enter what you’ll do next with this vendor.');
+      return v ? update('vendors',v,record) : insert('vendors',record);
+    });
 }
 function expenseForm(id) {
   if (!data.categories.length) { categoryForm(); return; }
@@ -827,6 +871,17 @@ function exportCSVs() {
   notify('Exported expense and payment CSVs. Allow multiple downloads if your browser asks. Amounts are integer cents.');
 }
 const actions = {
+  'aisle-toggle':()=>{aisleOpen=!isAisleOpen();render();$(aisleOpen?'#aisle-title':'#ask-aisle')?.focus();},
+  'aisle-close':()=>{aisleOpen=false;render();$('#ask-aisle')?.focus();},
+  'aisle-settings':()=>{if(api.pending)throw new Error('Retry the pending save before editing details in Aisle.');settingsForm(true);},
+  'aisle-vendor':id=>{
+    if(api.pending)throw new Error('Retry the pending save before editing a vendor in Aisle.');
+    vendorForm(id==='selected'?$('#f-aisle-vendor').value:'',true);
+  },
+  'aisle-import':importGuests,
+  'aisle-pause':()=>saveAisle({aisle_paused:true}),
+  'aisle-resume':()=>saveAisle({aisle_paused:false}),
+  'aisle-finish':()=>saveAisle({aisle_step:'complete',aisle_paused:false}),
   'register-invited':renderRegistration,
   'wedding-access':()=>{if(api.pending)throw new Error('Retry the pending save before changing weddings.');return start({hub:true,target:weddingId});},
   'access-refresh':()=>start({hub:true,target:hubOptions?.target}),
@@ -840,6 +895,7 @@ const actions = {
     if(epoch===sessionEpoch)await start({hub:true,target:hubOptions?.target});
   },
   ...Object.fromEntries(Object.keys(plannerSections).map(id => [`tab-${id}`, () => {
+    aisleOpen=false;
     tab = id;
     render();
   }])),
@@ -871,7 +927,7 @@ const actions = {
   'task-filter':id=>{taskFilter=id;render();},
   'reset-request': renderResetRequest, 'back-to-login': () => renderLogin(),
   'cancel-recovery': async () => {try{await api.signOut();}finally{resetPrivateUI();renderLogin();}},
-  start, refresh: reload, settings: settingsForm, export: exportCSVs,
+  start, refresh: reload, settings: () => settingsForm(), export: exportCSVs,
   'category-new': () => categoryForm(), 'category-edit': categoryForm,
   'filter-category': id => {selectedCategory=id;tab='budget';render();$('#expenses').scrollIntoView({block:'start'});},
   'vendor-new': () => vendorForm(), 'vendor-edit': vendorForm,

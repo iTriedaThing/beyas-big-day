@@ -24,7 +24,7 @@ test('feedback flows render and save through the app; Forecast survives polling 
     querySelector(){return new Element('button');}
     showModal(){this.open=true;}
     close(){this.open=false;this.listeners.get('close')?.();}
-    reset(){}scrollIntoView(){}focus(){}select(){}setSelectionRange(){}
+    append(){}reset(){}scrollIntoView(){}focus(){}select(){}setSelectionRange(){}
     addEventListener(name,handler){this.listeners.set(name,handler);}
   }
   const el=id=>{if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);};
@@ -200,6 +200,29 @@ test('feedback flows render and save through the app; Forecast survives polling 
   assert.doesNotMatch(el('main').innerHTML,/founder@example.invalid/);
   await click('open-wedding','10000000-0000-0000-0000-000000000001');
   assert.match(el('main').innerHTML,/Budget vs. paid/);
+  assert.doesNotMatch(el('main').innerHTML,/id="aisle-panel"/,'existing weddings opt in');
+  await click('aisle-toggle');
+  assert.match(el('main').innerHTML,/Set wedding details/);
+  await click('aisle-settings');
+  assert.match(el('fields').innerHTML,/Wedding budget \(optional\)/);
+  await submit({name:'Beya’s big day',currency:'USD',cap:'10000',wedding_date:'2027-06-19',time_zone:'America/New_York',planning_headcount:'90'});
+  assert.match(el('main').innerHTML,/Follow up with a vendor/);
+  assert.match(el('main').innerHTML,/guests are in your planner/,'the earlier CSV import counts in Aisle');
+  await click('aisle-pause');
+  assert.match(el('main').innerHTML,/Setup is paused/);
+  await click('wedding-access');
+  await click('open-wedding','10000000-0000-0000-0000-000000000001');
+  assert.doesNotMatch(el('main').innerHTML,/id="aisle-panel"/);
+  await click('aisle-toggle');
+  assert.match(el('main').innerHTML,/Resume setup/);
+  await click('aisle-resume');
+  await click('aisle-vendor');
+  await submit({name:'Sample florist',next_step:'Ask for a quote',vendor_kind:'vendor',rating:''});
+  assert.match(el('main').innerHTML,/You’ve saved a vendor and a next step/);
+  await click('aisle-finish');
+  assert.match(el('main').innerHTML,/What to do next/);
+  await click('tab-vendors');
+  assert.match(el('main').innerHTML,/Ask for a quote/);
   let exported;
   globalThis.document.createElement=()=>({click(){exported=this.href;}});
   await click('guests-export');

@@ -24,6 +24,12 @@ Our Big Day is a private wedding planner. Beya’s Big Day is the original coupl
 
 ## Local development
 
+### Aisle guided setup
+
+Use **Ask Aisle** from the planner to start, resume, or review setup. Newly created weddings open at the wedding details step. Aisle uses the same wedding settings, vendors, schedule, and CSV import as the planner. It recognizes existing guests and a vendor with a next step or open scheduled visit. Setup progress is shared across wedding members and devices. After setup, Aisle suggests a next action based on the planner’s data.
+
+The [Aisle migration](supabase/migrations/20261125035631_aisle_guided_setup.sql) adds setup progress to weddings and an optional next step to vendors. Existing weddings can open the guide when ready. Before the migration is applied, the app leaves the Aisle controls hidden.
+
 ### Where to make a change
 
 - The `plannerSections` object in `docs/app.js` connects each section's navigation label, view, and primary action. The same file coordinates editors, polling, and snapshot updates.
