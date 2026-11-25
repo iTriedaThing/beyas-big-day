@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "Beya’s Big Day",
-  "short_name": "The Big Day",
+  "name": "Our Big Day",
+  "short_name": "Our Big Day",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

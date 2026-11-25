@@ -63,6 +63,7 @@ export function installMock(menuEstimate) {
     {id:'music-task',title:'Put together our first-dance shortlist',planning_window:'2_4',due_date:'2027-03-01',completed:false},
   ].map(t=>({wedding_id:w,assignee_id:null,due_date:null,notes:'',archived:false,version:1,...t}));
   const realFetch=globalThis.fetch;
+  const pendingLinks=new Map();
   globalThis.fetch=async (url,options={})=>{
     if(!String(url).startsWith('https://fixture.supabase.co/'))return realFetch(url,options);
     if(String(url).includes('/storage/v1/object/')){
@@ -77,6 +78,18 @@ export function installMock(menuEstimate) {
       return Response.json({user:{id:a,email:'preview@example.invalid'},access_token:'fixture',refresh_token:'fixture',expires_in:3600});
     }
     const path=String(url).split('/rest/v1/')[1];
+    if(path==='rpc/planner_access')return Response.json({
+      operator:true,weddings:[{id:w,name:fixture.wedding.name}],incoming:[],outgoing:[...pendingLinks.values()],accepted_wedding:null
+    });
+    if(path==='rpc/issue_planner_invite'){
+      const email=body.recipient.trim().toLowerCase();
+      const existing=[...pendingLinks.values()].find(i=>i.email===email && i.target===body.w);
+      if(existing)return Response.json(existing.id);
+      const id=crypto.randomUUID();
+      pendingLinks.set(id,{id,email,target:body.w,wedding:body.w?fixture.wedding.name:null,expires_at:new Date(Date.now()+7*86400000).toISOString()});
+      return Response.json(id);
+    }
+    if(path==='rpc/revoke_planner_invite'){pendingLinks.delete(body.invitation);return Response.json(null);}
     if(path.startsWith('weddings?')&&(!options.method||options.method==='GET'))return Response.json([fixture.wedding]);
     if(path==='rpc/budget_snapshot'){
       fixture.seating_placements=fixture.seating_placements.filter(p=>{

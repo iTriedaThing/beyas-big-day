@@ -23,3 +23,6 @@
 
 -- This suite compares the full snapshot before and after replacing the two wrappers.
 \ir snapshot-access.sql
+\ir ../supabase/migrations/20261124041840_materialize_budget_snapshot.sql
+\ir ../supabase/migrations/20261124234432_private_wedding_enrollment.sql
+\ir enrollment-access.sql

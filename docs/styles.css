@@ -194,3 +194,7 @@ footer{text-align:center;font:italic 17px Georgia,serif;color:var(--plum);paddin
 }
 
 .menu-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:16px;align-items:end}.menu-filters label{margin-top:0}.menu-filters>div{min-width:0}
+.enrollment{max-width:720px;margin-inline:auto}
+.enrollment form>button{margin-top:1rem}
+.enrollment input,.enrollment select{font-size:1rem}
+.enrollment [role="alert"]{font-weight:600}

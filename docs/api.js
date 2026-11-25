@@ -54,6 +54,11 @@ export class Api {
     const s = await this.auth('token?grant_type=password', { email, password });
     this.setSession({ ...s, expires_at: Math.floor(Date.now() / 1000) + s.expires_in });
   }
+  async registerInvited(email,password,invitation,returnUrl) {
+    await this.auth(`signup?redirect_to=${encodeURIComponent(returnUrl)}`, {
+      email,password,data:{planner_invitation:invitation}
+    });
+  }
   async requestPasswordReset(email, returnUrl) {
     await this.auth(`recover?redirect_to=${encodeURIComponent(returnUrl)}`, { email });
   }
@@ -102,7 +107,9 @@ export class Api {
     return this.refreshing;
   }
   async signOut() {
-    try { await this.auth('logout', {}); } finally { this.setSession(null); }
+    const accessToken=this.session?.access_token;
+    this.setSession(null);
+    if (accessToken) await this.auth('logout', {}, {accessToken});
   }
   #accessTokenFor(userId) {
     if (this.session?.user.id !== userId) throw new Error('The signed-in account changed. Reopen the planner and try again.');
@@ -131,6 +138,7 @@ export class Api {
     const result = await res.json().catch(() => null);
     if (!res.ok) {
       const error = new Error(result?.message || `Request failed (${res.status}).`);
+      error.code = result?.code;
       // Only a rejection from the data endpoint can discard a saved operation.
       error.discardPending = isClientRejection(res.status) && res.status !== 401;
       throw error;
@@ -199,6 +207,7 @@ export function subscribe(api, wedding, onChange, onStatus, includePlanner = fal
     socket = new WebSocket(`${api.url.replace(/^http/, 'ws')}/realtime/v1/websocket?apikey=${encodeURIComponent(api.key)}&vsn=1.0.0`);
     const send = (topic, event, payload) => socket.readyState === WebSocket.OPEN && socket.send(JSON.stringify({ topic, event, payload, ref: String(++ref), join_ref: topic === 'phoenix' ? null : '1' }));
     socket.onopen = () => {
+      if (closed || !api.session) return;
       send('realtime:budget', 'phx_join', { access_token: api.session.access_token,
         config: { broadcast: { self: false }, presence: { key: '' }, postgres_changes: tables.map(table => ({
           event: '*', schema: 'public', table, filter: `${table === 'weddings' ? 'id' : 'wedding_id'}=eq.${wedding}`,
@@ -206,6 +215,7 @@ export function subscribe(api, wedding, onChange, onStatus, includePlanner = fal
       heartbeat = setInterval(() => send('phoenix', 'heartbeat', {}), 25000);
     };
     socket.onmessage = e => {
+      if (closed) return;
       const message = JSON.parse(e.data);
       if (message.event === 'postgres_changes') onChange();
       if (message.event === 'phx_reply' && message.ref === '1' && message.payload.status === 'ok') onStatus('Live updates connected');
