@@ -9,7 +9,7 @@ test('feedback flows render and save through the app; Forecast survives polling 
   const names=['document','window','sessionStorage','fetch','WebSocket','FormData','setInterval','clearInterval','setTimeout','clearTimeout'];
   const previous=new Map(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
   t.after(()=>{for(const [name,descriptor]of previous){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else delete globalThis[name];}});
-  const elements=new Map(),listeners=new Map(),intervals=[];
+  const elements=new Map(),listeners=new Map(),windowListeners=new Map(),intervals=[];
   class Element {
     constructor(id){this.id=id;this.textContent='';this.open=false;this.isConnected=true;this.disabled=false;this.value='';this.style={setProperty(){},removeProperty(){}};this.listeners=new Map();}
     set innerHTML(html){
@@ -31,7 +31,7 @@ test('feedback flows render and save through the app; Forecast survives polling 
   const storage=new Map(), rootClasses=new Set(), scrollRestores=[];
   Object.assign(globalThis,{
     document:{hidden:false,body:{style:el('body').style,classList:{toggle(){}}},documentElement:{classList:{add:name=>rootClasses.add(name),remove:name=>rootClasses.delete(name)}},querySelector:s=>s.startsWith('#')?el(s.slice(1)):null,addEventListener:(name,handler)=>listeners.set(name,handler)},
-    window:{location:new URL('http://localhost/'),history:{replaceState(){}},scrollY:420,scrollTo:options=>scrollRestores.push(options),addEventListener(){}},
+    window:{location:new URL('http://localhost/'),history:{replaceState(){}},scrollY:420,scrollTo:options=>scrollRestores.push(options),addEventListener:(name,handler)=>windowListeners.set(name,handler)},
     sessionStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     FormData:class extends Map{constructor(form){super(Object.entries(form.values||{}));}},
     setInterval:(fn,ms)=>{intervals.push({fn,ms});return intervals.length;},clearInterval(){},setTimeout:()=>1,clearTimeout(){},
@@ -96,7 +96,22 @@ test('feedback flows render and save through the app; Forecast survives polling 
   assert.equal(selectedInstallment,'deposit','a note edit must keep the payment linked to its paused schedule');
   await submit({expense_id:'catering',kind:'payment',amount:'1000',paid_on:'2026-11-14',payer_id:'00000000-0000-0000-0000-000000000002',installment_id:selectedInstallment,notes:'Deposit confirmed'});
   assert.match(el('main').innerHTML,/Schedule paused while unbooked/);
-  await click('tab-guests');await click('household-new');
+  await click('tab-guests');await click('guests-import');
+  assert.match(el('fields').innerHTML,/guest-list-template.csv/);
+  const guestFile=el('f-guest-file');
+  guestFile.files=[new File(['household,guest_name,rsvp\nFirst,Person,maybe'],'guests.csv')];
+  await guestFile.onchange();
+  assert.match(el('import-preview').textContent,/Line 2 · rsvp/);
+  assert.equal(el('save').disabled,true);
+  const cancelEvent=new Event('cancel',{cancelable:true});
+  el('editor').listeners.get('cancel')(cancelEvent);
+  assert.equal(cancelEvent.defaultPrevented,false,'Escape can dismiss an invalid CSV preview');
+  guestFile.files=[new File(['household,guest_name,rsvp\nFirst,<Person>,pending'],'guests.csv')];
+  await guestFile.onchange();
+  assert.match(el('import-preview').innerHTML,/&lt;Person&gt;/);
+  assert.equal(el('save').disabled,false);
+  await submit({});assert.match(el('main').innerHTML,/&lt;Person&gt;/);
+  await click('household-new');
   await submit({household_name:'Sample household',guest_names:'Taylor',unnamed_count:'0',invited_by:'00000000-0000-0000-0000-000000000002',contact_email:'',phone:'',mailing_address:'',notes:'',save_the_date_sent_on:'',invitation_sent_on:''});
   assert.match(el('main').innerHTML,/From Ben/);
   await click('tab-schedule');assert.match(el('main').innerHTML,/Garden venue tour/);
@@ -172,6 +187,12 @@ test('feedback flows render and save through the app; Forecast survives polling 
   assert.doesNotMatch(el('main').innerHTML,/Garden Table Catering/);
   const issue=el('issue-planner-invite');
   issue.values={target:'new',recipient:'founder@example.invalid'};
+  for(const name of ['focus','online']){
+    windowListeners.get(name)();
+    await settle();
+    assert.equal(el('issue-planner-invite'),issue,`Invitation draft survives ${name}`);
+    assert.match(el('main').innerHTML,/Your Big Days/);
+  }
   await issue.onsubmit({preventDefault(){},currentTarget:issue});
   assert.match(el('main').innerHTML,/Share this invitation/);
   const link=el('main').innerHTML.match(/data-action="revoke-planner-invite" data-id="([^"]+)"/)[1];

@@ -12,6 +12,8 @@ export function installMock(menuEstimate) {
     payments:[{id:'p1',wedding_id:w,expense_id:'catering',installment_id:'deposit',kind:'payment',amount_cents:90000,paid_on:'2026-11-13',payer_id:a,entered_by:b,notes:'Booking deposit',created_at:'2026-11-13T12:00:00Z'}],amendments:[],
   };
   fixture.planner_ready=true;fixture.feedback_ready=true;fixture.itinerary_ready=true;
+  fixture.guest_import_ready=true;
+  const guestImports=new Set();
   fixture.menu_ready=true;fixture.menu_courses=[
     {id:'main',wedding_id:w,name:'Mains',sort_order:1,choices_offered:true,version:1},
     {id:'drinks',wedding_id:w,name:'Drinks',sort_order:2,choices_offered:false,version:1}];
@@ -173,6 +175,20 @@ export function installMock(menuEstimate) {
         if(table==='menu_courses')fixture.menu_options.filter(o=>o.course_id===row.id).forEach(o=>remove('menu_options',o));
       };
       remove(body.t,record);return Response.json(null);
+    }
+    if(path==='rpc/import_guest_csv'){
+      if(guestImports.has(body.request_id))return Response.json(null);
+      const existing=new Set(fixture.invitations.filter(h=>!h.deleted).map(h=>h.household_name.trim().toLowerCase()));
+      for(const h of body.households){
+        if(existing.has(h.household.toLowerCase()))return Response.json({message:'Line '+h.line+' · household already exists.'},{status:400});
+        existing.add(h.household.toLowerCase());
+      }
+      for(const h of body.households){
+        const id=crypto.randomUUID();
+        fixture.invitations.push({id,wedding_id:w,household_name:h.household,contact_email:h.email,phone:h.phone,mailing_address:h.address,notes:'',archived:false,version:1});
+        for(const g of h.people)fixture.guests.push({id:crypto.randomUUID(),wedding_id:w,invitation_id:id,name:g.name||null,is_companion:g.companion,rsvp:g.rsvp,tag:'',gift_received:false,dietary_flags:[],dietary_notes:g.dietary_notes,caterer_confirmation:'',archived:false,version:1});
+      }
+      guestImports.add(body.request_id);return Response.json(null);
     }
     if(path==='rpc/create_household'){
       if(!fixture.invitations.some(i=>i.id===body.i.id))fixture.invitations.push({...body.i,archived:false,version:1});

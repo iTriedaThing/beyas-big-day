@@ -59,6 +59,12 @@ See [itinerary validation](ITINERARY-VALIDATION.md) for checks and rollout detai
 
 The existing Schedule remains the planning agenda and does not duplicate itinerary rows. Local validation includes 52 Node tests, static checks, the full SQL access chain and security advisors. Actual two-account browser delivery and print/PDF pagination remain separate checks. Future shared migrations and publication still require explicit approval.
 
+### Beta guest import
+
+Once the guest import migration is applied, open **03 · Guest list → Import guest CSV** and download the blank template. Fill one row per person. Use the same household label for people on one invitation and distinguish separate invitations with similar names. The required headers are `household` and `guest_name`. For an unnamed plus-one, leave the guest name empty and set `companion` to `yes`. Optional columns include RSVP, household email, phone and mailing address, and a person’s dietary notes. Leave unknown values blank. Save the file as comma-separated CSV UTF-8.
+
+Review the household and guest counts before confirming. Validation identifies errors by line and field. Imports add new households only. Existing or archived household names and repeated named guests within one household require review. Each file supports 1,000 people and 1 MiB, with up to 50 people per invitation. The whole import commits together. A retried save reuses its receipt. For verification, run the Node tests and `tests/guest-import-access.sql` against a disposable local database after the migrations. See the [beta plan](wedding-planner-build-brief.md#invite-only-our-big-day-beta--november-24-2026).
+
 ### Run locally
 
 Node 22+ is sufficient. There are **no production or development package dependencies**, no install step, and no compile step.
