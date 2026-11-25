@@ -29,3 +29,6 @@
 \ir ../supabase/migrations/20261125004206_private_wedding_enrollment.sql
 \ir enrollment-access.sql
 \ir aisle-access.sql
+\ir ../supabase/migrations/20261125044138_aisle_guided_setup.sql
+\ir ../supabase/migrations/20261125113849_vendor_comparison.sql
+\ir comparison-access.sql
