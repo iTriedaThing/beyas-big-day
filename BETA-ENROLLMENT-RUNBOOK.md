@@ -2,8 +2,10 @@
 
 **Start here.** On November 24, 2026, both features were live on Pages and Supabase recorded [guest CSV import](supabase/migrations/20261125004151_guest_csv_import.sql) followed by [private wedding enrollment](supabase/migrations/20261125004206_private_wedding_enrollment.sql). The hosted project is `beyas-big-day` (`nennjenlgfkblsmpkzfr`). Its public Auth settings showed signups enabled, email/password enabled and email confirmation required. There were zero beta operators and zero planner invitations. The database hook rejected a missing invitation when called directly. Its connection to hosted Auth and real email delivery still need the checks below.
 
-1. **Close signup during setup.** In Supabase Authentication, switch off **Allow new users to sign up**. Existing members can still sign in. Under **Hooks → Before User Created**, select the Postgres function `public.before_beta_signup`, enable the hook and save. Keep the `private` schema outside the Data API’s exposed schemas. [Supabase hook guide](https://supabase.com/docs/guides/auth/auth-hooks/before-user-created-hook)
-2. **Set up confirmation email.** Keep **Confirm email** on. Set the Site URL and allowed redirect to `https://itriedathing.github.io/beyas-big-day/`, including the trailing slash. Configure custom SMTP for recipients outside the Supabase project team and keep the default confirmation link in the signup template. [Supabase SMTP guide](https://supabase.com/docs/guides/auth/auth-smtp)
+For a new Supabase project, follow [fresh-project provisioning](#fresh-project-provisioning) first.
+
+1. **Close signup during setup.** In Supabase Authentication, switch off **Allow new users to sign up**. Existing members can still sign in. Under **Hooks → Before User Created**, select the Postgres function `public.before_beta_signup`, enable the hook and save. It checks the issued invitation, email address, expiration, and status. Keep the `private` schema outside the Data API’s exposed schemas. [Supabase hook guide](https://supabase.com/docs/guides/auth/auth-hooks/before-user-created-hook)
+2. **Set up confirmation email.** Enable email/password sign-in and keep **Confirm email** on. Set the Site URL and allowed redirect to the deployed planner’s URL, including the trailing slash. For the production planner use `https://itriedathing.github.io/beyas-big-day/`. Configure custom SMTP for recipients outside the Supabase project team and keep the default implicit confirmation link in the signup template. [Supabase SMTP guide](https://supabase.com/docs/guides/auth/auth-smtp)
 3. **Give yourself operator access.** In Authentication → Users, find your confirmed account by email. Substitute its UUID below and run this once in the project SQL Editor. Sign in to the planner and verify **Weddings & invitations → Invite someone → New beta wedding** appears.
 
    ```sql
@@ -13,6 +15,8 @@
    on conflict do nothing
    returning user_id;
    ```
+
+   Confirm the returned UUID matches your account. Running the statement again for an existing operator returns no row.
 
 4. **Rehearse with addresses you control.** With the hook active, switch signups on for the rehearsal. Verify signup without an invitation is rejected, then follow the [Aisle walkthrough](#rehearse-enrollment-and-aisle) to test a wrong email, real email confirmation, and a new wedding. If an invitation or email delivery check fails, switch signups off again.
 5. **Open the pilot.** Confirm the support contact, post-wedding export and deletion options, recovery window and backup-expiry wording against the [pilot brief](wedding-planner-build-brief.md#invite-only-our-big-day-beta--november-24-2026). Verify the exit options you intend to offer with the test wedding. When ready, create a fresh **New beta wedding** link for the couple’s first participant and send it privately.
@@ -43,6 +47,20 @@ To test skipping on a clean start, invite a fresh address to a second test weddi
 
 Open your private link, use the invited email address, and confirm it. If you already have an account, sign in. Enter your display name, wedding name and time zone. Aisle helps you finish your wedding details and choose your first task. Use **Ask Aisle** to resume or review the guide. To add your partner, open **Weddings & invitations**, select your wedding, and create a link for their email.
 
-Links expire after seven days. The sender can revoke a pending link or create a fresh one after expiry. Reopening an accepted link returns the recipient to their wedding. To pause enrollment, turn off new signups and revoke outstanding links, including links for people who already have accounts. See the [verification guide](VERIFICATION.md) for the hosted two-device checks.
+## Enrollment reference
 
-For the full invitation lifecycle, operator provisioning and verification instructions, see the [beta enrollment guide](BETA-ENROLLMENT.md).
+### Fresh-project provisioning
+
+Confirm the target Supabase project and obtain approval before applying migrations to a shared or production database. Keep signup disabled. Apply the files in `supabase/migrations/` in filename order using a migration workflow that records version history. The enrollment migration preserves existing weddings and memberships. Point the frontend at the chosen project and publish it before the rehearsal. Then use the opening checklist above to configure Auth and grant operator access. [Supabase setup in the README](README.md#set-up-supabase-administrative-review-before-applying)
+
+### Invitations and membership
+
+- **New weddings and collaborators.** An operator without a wedding lands directly on **Weddings & invitations**. The operator shares the invitation link privately, and Supabase sends the account confirmation email. After confirmation, a pending invitation is visible when the recipient signs in on another device. Accepting a new-wedding invitation creates the wedding and its first membership together. Collaborators can view and edit the whole wedding and invite others. Operator status alone grants no access to another couple’s data. Adding someone to the guest list grants no account access.
+- **Links and retries.** Invitations expire after seven days. Reissuing an active invitation for the same email and wedding returns the existing link. **Revoke link** cancels a pending invitation, and you can create a fresh link after expiry or revocation. Reopening a link you already accepted returns you to the same wedding. To pause enrollment, turn off new signups and revoke outstanding links, including invitations for people who already have accounts.
+- **Switching weddings and removing access.** Members of multiple weddings choose a wedding when signing in and can switch through **Weddings & invitations**. Removing an existing member requires administrative action.
+
+### Privacy verification
+
+Use separate test weddings and accounts. From an account in a different wedding, confirm you cannot read or edit the rehearsal wedding or access its exports or private photos. With an account that belongs to both test weddings, switch weddings while a refresh is pending and confirm that records and exports only reflect the selected wedding. Sign out and confirm the planner clears. Use two hosted browser sessions to verify synchronization. [Hosted verification guide](VERIFICATION.md)
+
+The local PostgreSQL suite covers the signup hook, invitation lifecycle, membership, and data boundaries. Run it on a fresh disposable database with `psql -X -v ON_ERROR_STOP=1 -d <test-db> -f tests/all.sql`. Test real Auth email delivery and Realtime against the configured hosted services.
