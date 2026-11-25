@@ -14,6 +14,10 @@ test('the local server keeps serving Pages assets after an invalid URL', async t
   assert.equal((await fetch(origin + '/fixture.js')).status, 404);
   const page = await fetch(origin);
   assert.equal(page.status, 200);
+  const template=await fetch(origin+'/guest-list-template.csv');
+  assert.equal(template.status,200);
+  assert.match(template.headers.get('content-type'),/^text\/csv/);
+  assert.match(await template.text(),/^household,guest_name,/);
   assert.match(await page.text(), /src="\.\/app\.js"/);
   const manifest = await fetch(origin + '/app.webmanifest');
   assert.equal(manifest.headers.get('content-type'), 'application/manifest+json');
