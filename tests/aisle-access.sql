@@ -8,7 +8,7 @@ insert into auth.users(id,email,email_confirmed_at) values(gen_random_uuid(),'ai
 insert into public.weddings(name) values('Existing planner') returning id as existing \gset
 insert into private.planner_invitations(email,issued_by) values('aisle-founder@example.invalid',:'outsider') returning id as invite \gset
 
-\ir ../supabase/migrations/20261125035631_aisle_guided_setup.sql
+\ir ../supabase/migrations/20261125044138_aisle_guided_setup.sql
 select pg_temp.assert((select aisle_step is null from public.weddings where id=:'existing'),'existing wedding stays opt-in');
 set local role authenticated;
 select set_config('request.jwt.claim.sub',:'founder',true);

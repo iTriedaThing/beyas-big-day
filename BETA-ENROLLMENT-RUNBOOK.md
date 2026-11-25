@@ -19,7 +19,7 @@
 
 ## Rehearse enrollment and Aisle
 
-Run this on the hosted planner once the Aisle frontend is published and its migration has been applied to the same Supabase project. Before issuing the test invite, sign in to Beya’s Big Day and check that **Ask Aisle** appears beside **Wedding settings**. You can leave the original guide closed and do the walkthrough in a new wedding. [Aisle migration](supabase/migrations/20261125035631_aisle_guided_setup.sql)
+The Aisle frontend and migration went live on the hosted planner on November 24, 2026. Before issuing the test invite, sign in to Beya’s Big Day and check that **Ask Aisle** appears beside **Wedding settings**. You can leave the original guide closed and do the walkthrough in a new wedding. [Aisle migration](supabase/migrations/20261125044138_aisle_guided_setup.sql)
 
 ### Invite yourself as a new user
 
