@@ -31,5 +31,5 @@
 \ir aisle-access.sql
 \ir ../supabase/migrations/20261125044138_aisle_guided_setup.sql
 \ir ../supabase/migrations/20261125201731_vendor_comparison.sql
-\ir ../supabase/migrations/20261126015517_delete_comparison_checklist.sql
+\ir ../supabase/migrations/20261126020841_delete_comparison_checklist.sql
 \ir comparison-access.sql
