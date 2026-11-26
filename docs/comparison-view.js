@@ -56,7 +56,11 @@ export function comparisonView(data,list,state) {
   const filters = [['all','All criteria'],['different','Differences'],['ask','To ask'],['decide','To decide']];
   return `<section class="panel comparison-panel"><div class="section-head">
     <h2 tabindex="-1" id="comparison-title">${esc(list.name)}</h2>${button('compare-home','All checklists')}</div>
-    <div class="actions">${data.vendors.length ? button('compare-add','Add vendor or package') : button('vendor-new','Add your first vendor')}${button('compare-criterion','Add criterion')}</div>
+    <div class="actions">
+      ${data.vendors.length ? button('compare-add','Add vendor or package') : button('vendor-new','Add your first vendor')}
+      ${button('compare-criterion','Add criterion')}
+      ${Number.isInteger(list.version) ? button('compare-delete','Delete',list.id) : ''}
+    </div>
     ${model.columns.length < 2 ? '<p>Add two or more vendors or packages to compare them side by side.</p>' : ''}
     ${model.rows.length ? '' : '<p>Add your first criterion, then mark the items that matter most as must-haves.</p>'}
     <div class="actions comparison-filters" role="group" aria-label="Filter criteria">${filters.map(([key,label]) =>

@@ -2,7 +2,7 @@ import {input, select, textarea, escapeHTML as esc} from './ui.js';
 import {comparisonModel, offerLabels, starterCriteria} from './vendor-comparison.js';
 import {listPicker, comparisonView} from './comparison-view.js';
 
-export function setupComparison({getData,openForm,insert,update,operation,show,reload,openExpense}) {
+export function setupComparison({getData,openForm,insert,update,operation,show,reload,openExpense,deleteChecklist}) {
   let state;
   function reset() {
     state = {open:false,listId:'',source:null,filter:'all',optionId:''};
@@ -128,6 +128,7 @@ export function setupComparison({getData,openForm,insert,update,operation,show,r
         await update('comparison_options',option,{selected:false});
         await reload();
       },
+      'compare-delete':deleteChecklist,
       'compare-expense':openExpense
     }
   };

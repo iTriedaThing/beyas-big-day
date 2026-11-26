@@ -105,6 +105,10 @@ export function installMock(menuEstimate) {
         g.meal_table=snapshot.seating_units.find(u=>u.id===p?.unit_id)?.label || '';
       }
       snapshot.menu_options=snapshot.menu_options.filter(o=>snapshot.menu_courses.some(c=>c.id===o.course_id));
+      snapshot.comparison_lists=snapshot.comparison_lists.filter(list=>!list.deleted);
+      for (const table of ['comparison_criteria','comparison_options','comparison_answers']) {
+        snapshot[table]=snapshot[table].filter(row=>snapshot.comparison_lists.some(list=>list.id===row.list_id));
+      }
       snapshot.menu_estimate=menuEstimate(snapshot);
       snapshot.expenses=snapshot.expenses.map(e=>e.id===snapshot.wedding.menu_expense_id?{...e,menu_linked:true,menu_estimate_cents:snapshot.menu_estimate.cents}:e);
       snapshot.installments=snapshot.installments.filter(i=>snapshot.expenses.some(e=>e.id===i.expense_id&&e.agreed_cents!==null));
@@ -194,7 +198,7 @@ export function installMock(menuEstimate) {
     }
     if(path==='rpc/create_comparison'){
       if(!fixture.comparison_lists.some(l=>l.id===body.list)){
-        fixture.comparison_lists.push({id:body.list,wedding_id:w,name:body.title});
+        fixture.comparison_lists.push({id:body.list,wedding_id:w,name:body.title,version:1});
         body.starters.forEach((c,index)=>fixture.comparison_criteria.push({...c,id:crypto.randomUUID(),wedding_id:w,list_id:body.list,
           position:(index+1)*10,must_have:false,version:1}));
         if(body.vendor)fixture.comparison_options.push({id:crypto.randomUUID(),wedding_id:w,list_id:body.list,
