@@ -96,7 +96,17 @@ test('feedback flows render and save through the app; Forecast survives polling 
   assert.match(el('main').innerHTML,/Garden dinner/);
   assert.match(el('main').innerHTML,/View agreement/);
   assert.doesNotMatch(el('main').innerHTML,/data-action="quote-edit"/);
-  await click('compare-home');await click('compare-close');
+  assert.match(el('main').innerHTML,/data-action="compare-add"[^]*data-action="compare-criterion"[^]*data-action="compare-delete"/);
+  await click('compare-delete',listId);
+  assert.match(el('fields').innerHTML,/Type DELETE to confirm/);
+  await submit({confirm:'delete'},/Type DELETE to confirm/);
+  assert.match(el('main').innerHTML,/Catering shortlist/);
+  el('editor').close();
+  await click('compare-delete',listId);
+  await submit({confirm:'DELETE'});
+  assert.match(el('main').innerHTML,/Start a checklist/);
+  assert.doesNotMatch(el('main').innerHTML,/Catering shortlist/);
+  await click('compare-close');
   await click('tab-budget');assert.match(el('main').innerHTML,/<option value="forecast" selected>/);
   await click('settings');assert.match(el('fields').innerHTML,/<select id="f-time_zone"/);el('editor').close();
   await click('expense-edit','catering');assert.match(el('fields').innerHTML,/Budgeted amount/);el('editor').close();

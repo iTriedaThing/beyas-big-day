@@ -56,8 +56,26 @@ select pg_temp.reject(format('insert into public.comparison_answers(wedding_id,l
 select pg_temp.reject(format('update public.comparison_options set vendor_id=%L where id=%L',:'second',:'qopt'));
 update public.quotes set deleted=true where id=:'quote';
 select pg_temp.assert(jsonb_array_length(public.budget_snapshot(:'w')->'comparison_answers')=1,'deleted package drops out of snapshots');
-update public.comparison_criteria set removed=true where id=:'criterion';
-select pg_temp.assert(jsonb_array_length(public.budget_snapshot(:'w')->'comparison_answers')=0,'removed criterion hides answers');
+select set_config('request.jwt.claim.sub',:'outsider',true);
+select pg_temp.reject(format('select public.delete_record(''comparison_lists'',%L,1)',:'list'));
+select set_config('request.jwt.claim.sub',:'partner',true);
+select pg_temp.reject(format('select public.delete_record(''comparison_lists'',%L,0)',:'list'));
+create temporary table before_delete as select public.budget_snapshot(:'w') as data;
+select public.delete_record('comparison_lists',:'list',1);
+select public.delete_record('comparison_lists',:'list',1);
+select pg_temp.assert((select deleted and version=2 from public.comparison_lists where id=:'list'),'retry preserves one tombstone');
+select pg_temp.assert(exists(select 1 from public.record_history where table_name='comparison_lists' and record_id=:'list'),'checklist deletion audited');
+select pg_temp.assert(jsonb_array_length(public.budget_snapshot(:'w')->'comparison_lists')=1,'other checklist remains');
+select pg_temp.assert(jsonb_array_length(public.budget_snapshot(:'w')->'comparison_criteria')=0
+  and jsonb_array_length(public.budget_snapshot(:'w')->'comparison_options')=0
+  and jsonb_array_length(public.budget_snapshot(:'w')->'comparison_answers')=0,'deleted checklist children leave the snapshot');
+select pg_temp.assert((public.budget_snapshot(:'w')->'vendors')=(select data->'vendors' from before_delete)
+  and (public.budget_snapshot(:'w')->'quotes')=(select data->'quotes' from before_delete)
+  and (public.budget_snapshot(:'w')->'expenses')=(select data->'expenses' from before_delete),'deletion leaves vendors and budget data intact');
+select pg_temp.reject(format('update public.comparison_answers set notes=''Late edit'' where id=%L',:'base'));
+select pg_temp.reject(format('update public.comparison_lists set deleted=false where id=%L',:'list'));
+select public.create_comparison(:'w',gen_random_uuid(),'Venues','[]') as replacement \gset
+select pg_temp.assert(:'replacement'<>:'list','checklist name can be reused');
 select set_config('request.jwt.claim.sub',:'outsider',true);
 select pg_temp.assert(jsonb_array_length(public.budget_snapshot(:'w')->'comparison_lists')=0,'outsider sees no lists');
 select pg_temp.reject(format('select public.create_comparison(%L,gen_random_uuid(),''Unauthorized'',''[]'')',:'w'));

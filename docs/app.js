@@ -61,6 +61,7 @@ const plannerSections = {
 };
 const vendorComparison = setupComparison({
   getData:() => data, openForm, insert, update, operation, reload,
+  deleteChecklist:id => deleteForm('comparison_lists',id),
   show:() => { tab='vendors'; render(); },
   openExpense:id => { selectedExpense=id; tab='budget'; render(); $('#expense-detail')?.scrollIntoView({block:'start'}); }
 });
@@ -705,6 +706,7 @@ function deleteForm(table,id) {
   requireFeedback();const record=data[table].find(r=>r.id===id);if(!record)throw new Error('Refresh and review this record.');
   const label=record.title||record.name||record.household_name||record.package_name||record.label||record.caption||table.replaceAll('_',' ');
   const messages={
+    comparison_lists:'This removes the checklist, its criteria, selected columns and answers for both partners. Vendor contacts and package quotes stay in Vendors & quotes.',
     categories:'This also deletes every expense in this category, their quotes, installments, and payment/refund records from active totals.',
     vendors:'This also deletes expenses linked to this vendor, their payments and schedules, all offers from this vendor, and attached pictures. Scheduled visits, day-of activities, and menu dishes remain, without the vendor link.',
     expenses:'This also deletes its quotes, installments, and payments/refunds from active totals.',
