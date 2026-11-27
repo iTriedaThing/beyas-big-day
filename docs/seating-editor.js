@@ -32,6 +32,7 @@ export function seatingForm(action, id, {data,event,selectedId,openForm,save}) {
   }
   if (action === 'delete') {
     openForm('Remove '+kind,`<p>Removing <strong>${esc(unit.label)}</strong> returns its ${plan.byUnit.get(id).length} assigned guests to this plan’s unassigned list. Their invitations and other event remain as planned.</p>`
+      +(data.archive_ready?'<p>Wedding owners can restore this from the Archive. Guests moved in the meantime keep their new seats.</p>':'')
       +input('confirm','Type the name to confirm','','text','required'), f=>{
         if (f.confirm !== unit.label) throw new Error('Enter the name exactly as shown.');
         return submit({action,unit_id:id});

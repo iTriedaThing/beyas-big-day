@@ -33,3 +33,4 @@
 \ir ../supabase/migrations/20261125201731_vendor_comparison.sql
 \ir ../supabase/migrations/20261126020841_delete_comparison_checklist.sql
 \ir comparison-access.sql
+\ir archive-access.sql

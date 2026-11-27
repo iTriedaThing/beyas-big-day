@@ -17,8 +17,8 @@ begin
   end if;
   insert into public.weddings(id,name,currency,cap_cents,time_zone)
     values(wedding,'Beya’s big day','USD',0,'America/New_York');
-  insert into public.wedding_members(wedding_id,user_id,display_name)
-    values(wedding,partner_a,'Maya'),(wedding,partner_b,'Ben');
+  insert into public.wedding_members(wedding_id,user_id,display_name,is_owner)
+    values(wedding,partner_a,'Maya',true),(wedding,partner_b,'Ben',true);
   insert into public.categories(wedding_id,name)
     select wedding,name from unnest(array['Rentals','Food','Décor','Invitations','Photography','Music','Favors','Attire','Venue']) name;
   raise notice 'Provisioned wedding ID: %',wedding;

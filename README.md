@@ -7,7 +7,7 @@ Our Big Day is a private wedding planner. Beya’s Big Day is the original coupl
 ## What ships
 
 - A forest-green, eggplant, lilac, and sage theme based on the couple’s palette, with original botanical SVG artwork, responsive cards, RSVP/progress charts, and a wedding countdown directly below the page subtitle on every section. No external fonts or new package dependencies.
-- Household contacts and mailing addresses; separate save-the-date and invitation sent dates; individual guests and unnamed companions; partner-entered yes/no/pending replies; relationship tags, gifts, dietary flags, guest requests, and separate caterer confirmation. Counts are per person, mailing progress per household, and dietary counts include attending guests only. Guests can be attributed to Ben, Maya, or Together/unspecified. Archive/restore remains available alongside confirmed deletion. Active guests can be exported to CSV, including attribution.
+- Household contacts and mailing addresses; separate save-the-date and invitation sent dates; individual guests and unnamed companions; partner-entered yes/no/pending replies; relationship tags, gifts, dietary flags, guest requests, and separate caterer confirmation. Counts are per person, mailing progress per household, and dietary counts include attending guests only. Guests can be attributed to Ben, Maya, or Together/unspecified. Confirmed deletion moves a household or individual guest into the wedding Archive when the archive migration is enabled. Active guests can be exported to CSV, including attribution.
 - An editable shared checklist with 22 optional starter tasks, planning windows, completion progress, assignees, relative deadlines, fixed dates, and upcoming/overdue summaries. Starter imports deduplicate by wedding and template key. Calendar-month offsets clamp to the last valid day; final-month/week/day windows use explicit day offsets. Setting/changing the wedding date updates relative dates and the countdown, while fixed deadlines stay fixed.
 - Email/password sign-in for administrator-provisioned accounts, email-link confirmation and password recovery, shared wedding settings, editable categories and item targets, planned expenses, and booked agreements.
 - Vendor contacts and side-by-side package quotes, including fixed/per-guest prices, saved headcount, inclusions, ratings, and notes. A preferred quote contributes once to forecast. Booking updates the existing expense; unused quotes stay available. Booked quotes are preserved; agreed-price changes require an amendment with history.
@@ -16,11 +16,34 @@ Our Big Day is a private wedding planner. Beya’s Big Day is the original coupl
 - Budget vs. paid bars (with Forecast comparison), net-payment breakdown, and separate expense/payment CSV downloads. Exports use integer cents and escape spreadsheet formulas in user-entered text.
 - “Budgeted amount” replaces the user-facing expense “target” label; API/CSV `target_cents` remains backward compatible. Forecast is clickable across the whole card, and the chart retains its Paid/Forecast choice through polling and partner updates. Wedding settings use a time-zone dropdown, retaining saved aliases.
 - Payment/refund edits update amounts, type, date, payer, notes, expense, and installment, with optimistic versions and private before/after history. Unbooking returns an agreement to planning, clears quote selections, keeps payments/history, and pauses installment reminders until rebooking.
-- Confirmed deletion covers categories, vendors, expenses, quotes, installments, payment/refund records, households, guests, tasks, events, and picture attachments. Related deletion effects are explained before confirmation. Records are tombstoned rather than physically purged, excluded from snapshots/exports, and retained behind membership RLS for accountability. There is no user-facing deleted-record restore; archive/restore is separate.
+- Confirmed deletion covers categories, vendors, expenses, quotes, installments, payment/refund records, households, guests, tasks, events, and picture attachments. Related deletion effects are explained before confirmation. With the archive migration, Delete hides the selected item and its dependent records. Wedding owners can restore it or review and permanently delete it from the Archive.
 - Vendors/venues have overall 1–5 ratings, displayed highest first independently of offer ratings, clickable website links, and private JPEG/PNG/WebP attachments up to 5 MB each. Below the rating, each card lists its upcoming tours from Schedule with the date, wedding-local time, and location.
 - **Schedule** combines tours, tastings, appointments, open dated tasks, and outstanding booked installments in one chronological agenda. Events have a local date, optional local time, location, vendor link, notes, and completion state. Editing a task/payment uses its original record.
 - **Mood board** stores a public Pinterest board URL and displays Pinterest’s official board widget in a sandboxed frame. Pinterest shows a limited preview (up to 50 Pins), not an unrestricted Pinterest browser. Secret boards, blocked third-party content, or cookie/login requirements may prevent a preview; a direct link remains available. See [Pinterest widget documentation](https://developers.pinterest.com/docs/web-features/widgets/).
 - Version-filtered edits detect simultaneous changes. Payment UUIDs and unconfirmed save payloads survive reloads in the same tab. Realtime refetches, a 20-second foreground polling fallback, and focus/online refresh keep two open screens current.
+
+### Wedding Archive
+
+The Archive appears for wedding owners once the [archive migration](supabase/migrations/20261127001810_wedding_archive.sql) is installed. Members keep their usual Delete buttons and typed confirmations. Archiving changes only the selected item's `is_active`. Dependent items disappear from the active planner, totals, pickers, photos and exports. Restore brings back eligible items and respects independently archived children, newer seating assignments and other inactive parents. Resolve a reused name by renaming the active item before restoring. A comparison checklist owns its criteria, columns and answers. Removing a column or deselecting a dish remains an ordinary edit. The checklist's Archived filter opens the same owner-only task entries.
+
+Permanent deletion previews the affected records, including separately archived descendants. The owner must type `DELETE` again. File cleanup uses the private Storage API and retries when an owner next opens the planner. Private edit history remains. Historical alpha deletions stay out of the Archive. Existing intentionally archived tasks, guests and households remain recoverable.
+
+**Existing wedding owners.** Membership is wedding-specific. New wedding founders receive ownership and direct partner provisioning names both owners explicitly. Invitations to an existing wedding create ordinary memberships. For the existing alpha wedding, the rollout operator must verify the wedding UUID and the two partners' Auth user UUIDs. Apply the following in the same reviewed rollout transaction as the migration, substituting those verified IDs. This grants ownership only to the two existing memberships.
+
+```sql
+do $$
+declare
+  w uuid := '<verified wedding UUID>';
+  partners uuid[] := array['<first verified Auth UUID>','<second verified Auth UUID>']::uuid[];
+  changed integer;
+begin
+  update public.wedding_members set is_owner=true where wedding_id=w and user_id=any(partners);
+  get diagnostics changed = row_count;
+  if changed<>2 then raise exception 'Expected two distinct existing partner memberships'; end if;
+end $$;
+```
+
+**Adding deletable features.** Register the entity in `private.archive_types`, define its owned relationships in `private.archive_links` and install the corresponding active-row policies, foreign keys, and archive cleanup trigger in its migration. Extend the dependency view for the purge preview. Identify optional references and file cleanup explicitly. Use the existing versioned Delete RPC and confirmation UI. Add a local SQL regression for parent-only archive, restore, purge impact, and owner isolation. The archive suite also runs the migration against pre-existing alpha data.
 
 ## Local development
 

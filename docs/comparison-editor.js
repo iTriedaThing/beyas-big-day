@@ -2,7 +2,7 @@ import {input, select, textarea, escapeHTML as esc} from './ui.js';
 import {comparisonModel, offerLabels, starterCriteria} from './vendor-comparison.js';
 import {listPicker, comparisonView} from './comparison-view.js';
 
-export function setupComparison({getData,openForm,insert,update,operation,show,reload,openExpense,deleteChecklist}) {
+export function setupComparison({getData,openForm,insert,update,operation,show,reload,openExpense,deleteChecklist,deleteCriterion}) {
   let state;
   function reset() {
     state = {open:false,listId:'',source:null,filter:'all',optionId:''};
@@ -65,7 +65,7 @@ export function setupComparison({getData,openForm,insert,update,operation,show,r
       input('section','Group',row?.section || '','text','maxlength="80"')+
       select('priority','Priority',[['optional','Optional'],['must','Must-have']],row?.must_have ? 'must' : 'optional')+
       input('position','Display order within priority',row?.position ?? Math.min(next,1000000),'number','required min="0" max="1000000"')+
-      (row ? select('keep','Keep in checklist?',[['yes','Keep'],['no','Remove criterion and hide its answers']]) : ''),f => {
+      (row && !getData().archive_ready ? select('keep','Keep in checklist?',[['yes','Keep'],['no','Remove criterion and hide its answers']]) : ''),f => {
         const fields = {label:f.label.trim(),section:f.section.trim(),position:Number(f.position),must_have:f.priority==='must'};
         return row ? update('comparison_criteria',row,{...fields,removed:f.keep==='no'}) : insert('comparison_criteria',{...fields,list_id:listId});
       });
@@ -123,6 +123,7 @@ export function setupComparison({getData,openForm,insert,update,operation,show,r
       },
       'compare-add':pickOption,'compare-criterion':criterionForm,'compare-answer':answerForm,
       'compare-filter':filter,'compare-questions':id => filter('ask',id),'compare-decisions':id => filter('decide',id),
+      'compare-criterion-delete':deleteCriterion,
       'compare-remove':async id => {
         const option = getData().comparison_options.find(o => o.id===id);
         await update('comparison_options',option,{selected:false});
