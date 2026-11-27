@@ -1,3 +1,4 @@
+import {renderArchive,renderPurgeImpact} from './archive.js';
 import {prepareGuestImport,maxFileBytes} from './guest-import.js';
 import {aisleReady,aisleStartsOpen,renderAisle} from './aisle.js';
 import {renderSeating} from './seating.js';
@@ -57,10 +58,12 @@ const plannerSections = {
     label:'Our menu', render:() => renderMenu(data,menuFilters),
     primary:() => data.menu_ready ? btn('menu-dish-new','+ Add dish','','') : ''
   },
+  archive: {label:'Archive', render:() => renderArchive(data)},
   seating: {label:'Seating chart', render:() => renderSeating(data,seatingEvent,seatingUnit)}
 };
 const vendorComparison = setupComparison({
   getData:() => data, openForm, insert, update, operation, reload,
+  deleteCriterion:id => deleteForm('comparison_criteria',id),
   deleteChecklist:id => deleteForm('comparison_lists',id),
   show:() => { tab='vendors'; render(); },
   openExpense:id => { selectedExpense=id; tab='budget'; render(); $('#expense-detail')?.scrollIntoView({block:'start'}); }
@@ -255,6 +258,7 @@ async function reload() {
     if(itineraryTrack&&!itineraryTracks(data).includes(itineraryTrack))itineraryTrack='';
     const restoreComparison = vendorComparison.open && rememberComparisonViewport();
     totals = summarize(data); render();
+    if (data.archive_files_pending) void cleanupArchiveFiles();
     if (restoreComparison) restoreComparison();
     if (subscriptionsChanged) connectLive();
   } catch (error) {
@@ -278,6 +282,7 @@ function render() {
   document.body.classList.toggle('printing-menu',tab==='menu');
   const previousBoard=document.querySelector('.moodboard-frame');
   renderAccount();
+  if (tab==='archive' && !Array.isArray(data.archive_entries)) tab='budget';
   const section = plannerSections[tab];
   const primary = section.primary?.() ?? '';
   const showAisle = isAisleOpen();
@@ -285,7 +290,7 @@ function render() {
   $('#main').innerHTML = `<section class="intro"><div><p class="eyebrow">${data.members.map(m=>esc(m.display_name)).join(' + ')}</p><h1>${esc(data.wedding.name)}</h1><p class="intro-note">A little planning. A lot of love.</p>${countdown(data.wedding.wedding_date,today())}<p class="wedding-meta">${data.wedding.wedding_date?esc(displayDate(data.wedding.wedding_date)):'Our date is still a beautiful possibility'}<span>·</span>${esc(data.wedding.currency)}</p></div><div class="actions">${primary}</div></section>
     <div class="section-head utility-bar"><small id="sync" class="sync-status">${esc(syncStatus)}</small><div class="actions">${api.pending?btn('retry','Retry pending save'):''}${btn('refresh','Refresh')}${aisleReady(data.wedding)?`<button type="button" class="secondary" id="ask-aisle" data-action="aisle-toggle" aria-expanded="${showAisle}">Ask Aisle</button>`:''}${btn('settings','Wedding settings')}${btn('export','Budget CSVs')}</div></div>
     ${showAisle ? renderAisle(data,$('#f-aisle-vendor')?.value) : ''}
-    <nav class="planner-nav" id="planner-sections" aria-label="Planner sections">${Object.entries(plannerSections).map(([id,{label}],index)=>`<button type="button" data-action="tab-${id}" class="secondary" aria-pressed="${tab===id}"><span aria-hidden="true">${String(index+1).padStart(2,'0')}</span>${label}</button>`).join('')}</nav>
+    <nav class="planner-nav" id="planner-sections" aria-label="Planner sections">${Object.entries(plannerSections).filter(([id])=>id!=='archive'||Array.isArray(data.archive_entries)).map(([id,{label}],index)=>`<button type="button" data-action="tab-${id}" class="secondary" aria-pressed="${tab===id}"><span aria-hidden="true">${String(index+1).padStart(2,'0')}</span>${label}</button>`).join('')}</nav>
     ${section.render()}`;
   updateBackToTop();
   const nextBoard=document.querySelector('.moodboard-frame');
@@ -396,13 +401,13 @@ function renderVendors() {
     return `<article class="panel"><div class="section-head"><h3>${esc(v.name)}</h3><div class="actions">${data.comparison_ready?btn('compare-vendor','Compare',v.id):''}${btn('vendor-edit','Edit details',v.id)}${data.feedback_ready?btn('photo-new','Attach picture',v.id)+btn('event-vendor','Schedule visit',v.id)+btn('vendor-delete','Delete',v.id):''}</div></div><p>${esc(v.contact_name)} · ${esc(v.email)} · ${esc(v.phone)}</p><p class="vendor-website">${websiteLink(v.website)}</p><p>${esc(v.vendor_kind==='venue'?'Venue':'Vendor')} · ${v.rating?`${v.rating}/5 overall rating`:'Not rated yet'}</p>${data.feedback_ready?renderVendorTours(tours.filter(tour=>tour.vendor_id===v.id)): ''}${v.next_step?`<p><strong>Next step</strong> · ${esc(v.next_step)}</p>`:''}${vendorPhotos(v.id)}<p>${esc(v.notes)}</p>${data.menu_ready?`<p>${data.menu_options.filter(o=>o.vendor_id===v.id).length} menu dishes ${btn('menu-vendor-open','View dishes',v.id)}</p>`:''}${rows.length ? expenseTable(rows) : '<p class="muted">No booked expenses yet.</p>'}</article>`;
   }).join('') || '<p class="empty">Add vendor contacts, then add packages to an expense to compare quotes.</p>'}</section><section class="panel"><h2>Compare offers by expense</h2>${expenseTable(totals.rows)}</section>${selectedExpense ? renderExpense(selectedExpense) : ''}`;
 }
-function openForm(title, fields, save) {
+function openForm(title, fields, save, submitLabel='Save') {
   const epoch = sessionEpoch;
   $('#save').hidden=false;
   $('#dialog-title').textContent = title; $('#fields').innerHTML = fields; $('#form-error').textContent = '';
-  $('#save').disabled = false; $('#cancel').disabled = false; $('#save').textContent = api.pending ? 'Retry original save' : 'Save';
+  $('#save').disabled = false; $('#cancel').disabled = false; $('#save').textContent = api.pending ? 'Retry original save' : submitLabel;
   $('#edit-form').onsubmit = async event => {
-    event.preventDefault(); $('#save').disabled = true; $('#cancel').disabled = true;
+    event.preventDefault(); $('#form-error').textContent=''; $('#save').disabled = true; $('#cancel').disabled = true;
     try {
       if (api.pending) await api.retryPending(); else await save(Object.fromEntries(new FormData(event.currentTarget)));
       if (epoch !== sessionEpoch) return;
@@ -412,7 +417,7 @@ function openForm(title, fields, save) {
       const message = $('#form-error');
       message.textContent = errorMessage(error);
       message.scrollIntoView({block:'nearest'});
-      $('#save').textContent = api.pending ? 'Retry original save' : 'Save';
+      $('#save').textContent = api.pending ? 'Retry original save' : submitLabel;
     } finally {
       if (epoch === sessionEpoch) { $('#save').disabled = false; $('#cancel').disabled = false; }
     }
@@ -702,10 +707,52 @@ function unbookForm(id) {
     return update('expenses',e,{agreed_cents:null,preferred_quote_id:null,booked_quote_id:null,amendment_reason:f.reason.trim()});
   });
 }
+let cleaningFiles = false;
+async function cleanupArchiveFiles() {
+  if (cleaningFiles || !data?.archive_files_pending) return;
+  const w=weddingId, epoch=sessionEpoch;
+  cleaningFiles=true;
+  try {
+    const files=await api.request('rpc/pending_archive_files',{method:'POST',body:{w}});
+    for (const file of files) {
+      if (epoch!==sessionEpoch || w!==weddingId) return;
+      await api.removeArchiveFile(file.bucket,file.path);
+    }
+    if (epoch!==sessionEpoch || w!==weddingId) return;
+    const remaining=await api.request('rpc/pending_archive_files',{method:'POST',body:{w}});
+    if (epoch===sessionEpoch && w===weddingId && data) {
+      data.archive_files_pending=remaining.length>0;
+      if (tab==='archive') render();
+    }
+  } catch {
+    if (epoch===sessionEpoch && w===weddingId) notify('Picture cleanup is pending. Retry it from the Archive.',true);
+  } finally { cleaningFiles=false; }
+}
+async function archiveAction(token,action) {
+  const entry=data.archive_entries?.find(item=>item.token===token);
+  if (!entry) throw new Error('Refresh the Archive and try again.');
+  const w=weddingId, epoch=sessionEpoch, body={w,entry_token:token,action};
+  if (action==='restore') {
+    const result=await operation('rpc/manage_archive',body);
+    if (epoch!==sessionEpoch || w!==weddingId) return;
+    await reload();
+    if (epoch===sessionEpoch && w===weddingId) notify(result?.seats_to_review ? 'Restored. Review the seating chart for changed or unavailable seats.' : 'Restored.');
+    return;
+  }
+  const impact=await api.request('rpc/manage_archive',{method:'POST',body:{...body,action:'preview'}});
+  if (epoch!==sessionEpoch || w!==weddingId) return;
+  openForm('Permanently delete '+entry.label,
+    '<p class="warning">These records and their attached pictures will be permanently deleted. Private edit history is retained.</p>'
+      +renderPurgeImpact(impact)+input('confirm','Type DELETE to permanently delete','','text','required autocomplete="off"'),f=>{
+      if (f.confirm!=='DELETE') throw new Error('Type DELETE to confirm permanent deletion.');
+      return operation('rpc/manage_archive',{...body,confirmed:impact});
+    },'Delete permanently');
+}
 function deleteForm(table,id) {
   requireFeedback();const record=data[table].find(r=>r.id===id);if(!record)throw new Error('Refresh and review this record.');
   const label=record.title||record.name||record.household_name||record.package_name||record.label||record.caption||table.replaceAll('_',' ');
   const messages={
+    comparison_criteria:'Its answers will be hidden with the criterion.',
     comparison_lists:'This removes the checklist, its criteria, selected columns and answers for both partners. Vendor contacts and package quotes stay in Vendors & quotes.',
     categories:'This also deletes every expense in this category, their quotes, installments, and payment/refund records from active totals.',
     vendors:'This also deletes expenses linked to this vendor, their payments and schedules, all offers from this vendor, and attached pictures. Scheduled visits, day-of activities, and menu dishes remain, without the vendor link.',
@@ -717,7 +764,16 @@ function deleteForm(table,id) {
     guests:'This removes this person from active seat, RSVP, and dietary counts.',
     tasks:'This removes this task from checklist progress and the schedule.',events:'This removes the event from the schedule.',vendor_photos:'This removes the picture from the vendor gallery.',itinerary_items:'This removes the activity from the day-of itinerary and its printable copy.',menu_courses:'This also removes its dishes. Existing choices will need review; catering forecasts update.',menu_options:'This removes the dish and its photo from the menu. Affected guest choices will need review; catering forecasts update.'
   };
-  openForm(`Delete ${label}`,`<p class="warning">${esc(messages[table])}</p><p>This removes it from the planner and exports. Private history is retained for accountability. There is no restore button for deleted records.</p>`+input('confirm','Type DELETE to confirm','','text','required autocomplete="off"'),f=>{
+  const archiveImpact={
+    categories:'Expenses in this category, including their quotes, installments, and payments, will be hidden from active totals.',
+    vendors:'Linked expenses, quotes, dishes, visits, and pictures will be hidden. Day-of activities stay on the itinerary.',
+    expenses:'Its quotes, installments, and payments will be hidden from active totals.',
+    invitations:'Guests in this household will be hidden from counts and their seats will become available.',
+    comparison_lists:'The checklist, its criteria, columns and answers will be hidden. Vendor contacts and package quotes remain available.'
+  };
+  const impact=(data.archive_ready && archiveImpact[table]) || messages[table];
+  const explanation=data.archive_ready ? 'Wedding owners can restore this item from the Archive. Previously archived items stay archived.' : 'This removes it from the planner and exports. Private history is retained for accountability. There is no restore button for deleted records.';
+  openForm(`Delete ${label}`,`<p class="warning">${esc(impact)}</p><p>${explanation}</p>`+input('confirm','Type DELETE to confirm','','text','required autocomplete="off"'),f=>{
     if(f.confirm!=='DELETE')throw new Error('Type DELETE to confirm.');
     return operation('rpc/delete_record',{t:table,r:id,v:record.version});
   });
@@ -932,13 +988,16 @@ const actions = {
   'moodboard-edit':moodboardForm,'moodboard-refresh':()=>{const frame=document.querySelector('.moodboard-frame');if(frame)frame.src=frame.getAttribute('src');},'photo-new':photoForm,
   ...Object.fromEntries([['expense','expenses'],['vendor','vendors'],['category','categories'],['household','invitations'],['guest','guests'],['task','tasks'],['quote','quotes'],['installment','installments'],['payment','payments'],['event','events'],['photo','vendor_photos'],['itinerary','itinerary_items'],['menu-course','menu_courses'],['menu-dish','menu_options']].map(([action,table])=>[`${action}-delete`,id=>deleteForm(table,id)])),
   'household-new':()=>householdForm(),'household-edit':householdForm,
-  'household-archive':id=>changePlannerRecord('invitations',id,{archived:!data.invitations.find(i=>i.id===id).archived}),
+  'household-archive':id=>data.archive_ready?deleteForm('invitations',id):changePlannerRecord('invitations',id,{archived:!data.invitations.find(i=>i.id===id).archived}),
   'guest-new':invitationId=>guestForm('',invitationId),'guest-edit':id=>guestForm(id),
   'guest-rsvp':(id,rsvp)=>changePlannerRecord('guests',id,{rsvp}),
-  'guest-archive':id=>changePlannerRecord('guests',id,{archived:!data.guests.find(g=>g.id===id).archived}),
+  'guest-archive':id=>data.archive_ready?deleteForm('guests',id):changePlannerRecord('guests',id,{archived:!data.guests.find(g=>g.id===id).archived}),
   'guests-import':importGuests,'guests-export':exportGuests,'task-new':()=>taskForm(),'task-edit':taskForm,'tasks-seed':seedTasks,
   'task-toggle':id=>changePlannerRecord('tasks',id,{completed:!data.tasks.find(t=>t.id===id).completed}),
-  'task-archive':id=>changePlannerRecord('tasks',id,{archived:!data.tasks.find(t=>t.id===id).archived}),
+  'task-archive':id=>data.archive_ready?deleteForm('tasks',id):changePlannerRecord('tasks',id,{archived:!data.tasks.find(t=>t.id===id).archived}),
+  'archive-restore':token=>archiveAction(token,'restore'),
+  'archive-purge':token=>archiveAction(token,'purge'),
+  'archive-files':cleanupArchiveFiles,
   'task-filter':id=>{taskFilter=id;render();},
   'reset-request': renderResetRequest, 'back-to-login': () => renderLogin(),
   'cancel-recovery': async () => {try{await api.signOut();}finally{resetPrivateUI();renderLogin();}},

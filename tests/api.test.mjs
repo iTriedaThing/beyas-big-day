@@ -15,6 +15,18 @@ test('private photo uploads send the binary file and downloads use authenticated
   assert.equal(requests[1].url,'https://example.supabase.co/storage/v1/object/authenticated/vendor-photos/wedding/vendor/picture.png');
   assert.equal(requests[1].options.headers.Authorization,'Bearer test-token');assert.equal(await blob.text(),'sample-bytes');
 });
+test('purged pictures are removed by exact path using authenticated Storage',async()=>{
+  let request;
+  const api=new Api(config,storage(),async(url,options)=>{request={url,options};return Response.json([]);});
+  api.setSession(session);
+  await api.removeArchiveFile('menu-photos','w/d/photo.jpg');
+  assert.equal(request.url,'https://example.supabase.co/storage/v1/object/menu-photos');
+  assert.equal(request.options.method,'DELETE');
+  assert.equal(request.options.headers.Authorization,'Bearer test-token');
+  assert.deepEqual(JSON.parse(request.options.body),{prefixes:['w/d/photo.jpg']});
+  await assert.rejects(api.removeArchiveFile('other','w/d/photo.jpg'),/Unknown picture bucket/);
+});
+
 test('photo requests refresh expired authorization once and report Storage failures',async()=>{
   let calls=0;
   const api=new Api(config,storage(),async url=>{

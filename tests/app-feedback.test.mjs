@@ -38,9 +38,20 @@ test('feedback flows render and save through the app; Forecast survives polling 
     fetch:async()=>{throw new Error('Unexpected real network request in app fixture');}
   });
   installMock(menuEstimate);const mockFetch=globalThis.fetch;
-  let historyDelay, snapshotDelay, secondWedding;
+  let historyDelay, snapshotDelay, secondWedding, archiveEntries;
+  const archiveRequests=[];
   globalThis.fetch=async(url,options)=>{
+    if (archiveEntries && String(url).endsWith('/rpc/manage_archive')) {
+      const body=JSON.parse(options.body);
+      archiveRequests.push(body);
+      if (body.action==='preview') return Response.json({tasks:[{id:'task',label:'Book <music>'}]});
+      archiveEntries=archiveEntries.filter(entry=>entry.token!==body.entry_token);
+      return Response.json(null);
+    }
     const response=await mockFetch(String(url).replace(config.supabaseUrl,'https://fixture.supabase.co'),options);
+    if (archiveEntries && String(url).endsWith('/rpc/budget_snapshot')) {
+      return Response.json({...await response.json(),archive_ready:true,archive_entries:archiveEntries});
+    }
     if(secondWedding && String(url).endsWith('/rpc/planner_access')){
       const access=await response.json();
       access.weddings.push(secondWedding);
@@ -253,6 +264,25 @@ test('feedback flows render and save through the app; Forecast survives polling 
   await click('guests-export');
   assert.match(await (await previous.get('fetch').value(exported)).text(),/Alex Rivera/);
   URL.revokeObjectURL(exported);
+  archiveEntries=[{kind:'tasks',token:'restore-token',label:'Choose flowers'},{kind:'tasks',token:'purge-token',label:'Book <music>'}];
+  await click('refresh');
+  assert.match(el('main').innerHTML,/tab-archive/);
+  await click('tab-planning');
+  await click('task-filter','archived');
+  assert.match(el('main').innerHTML,/Archived checklist items/);
+  await click('archive-restore','restore-token');
+  assert.equal(archiveRequests.at(-1).action,'restore');
+  await click('tab-archive');
+  assert.doesNotMatch(el('main').innerHTML,/Choose flowers/);
+  assert.match(el('main').innerHTML,/Book &lt;music&gt;/);
+  await click('archive-purge','purge-token');
+  assert.match(el('fields').innerHTML,/Checklist items \(1\)/);
+  await submit({confirm:'delete'},/Type DELETE/);
+  assert.equal(archiveRequests.at(-1).action,'preview');
+  await submit({confirm:'DELETE'});
+  assert.equal(archiveRequests.at(-1).confirmed.tasks[0].id,'task');
+  assert.match(el('main').innerHTML,/No archived items/);
+  archiveEntries=undefined;
   secondWedding={id:'20000000-0000-0000-0000-000000000002',name:'Second wedding'};
   let finishOldRefresh;
   snapshotDelay=new Promise(resolve=>{finishOldRefresh=resolve;});

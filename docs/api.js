@@ -176,6 +176,13 @@ export class Api {
     }
   }
   async snapshot(wedding) { return this.request('rpc/budget_snapshot', { method: 'POST', body: { w: wedding } }); }
+  async removeArchiveFile(bucket,path) {
+    if (!['vendor-photos','menu-photos'].includes(bucket)) throw new Error('Unknown picture bucket.');
+    const response=await this.#authenticatedFetch('/storage/v1/object/'+bucket,{
+      method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({prefixes:[path]})
+    },{retry:true,timeoutMs:30000});
+    if (!response.ok) throw new Error('Picture cleanup failed.');
+  }
   async photo(path, {file, retry = true, bucket = 'vendor-photos'} = {}) {
     if (!['vendor-photos', 'menu-photos'].includes(bucket)) throw new Error('Unsupported photo bucket.');
     const objectPath = path.split('/').map(encodeURIComponent).join('/');

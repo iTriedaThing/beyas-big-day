@@ -33,11 +33,11 @@ function columnHeader(column, total, data) {
     <details data-column="${esc(column.id)}"><summary>Option actions</summary>${actions.join('')}</details></th>`;
 }
 
-function renderRow({criterion,cells}) {
+function renderRow({criterion,cells},archiveReady) {
   return `<tr><th scope="row"><small>${esc(criterion.section)}</small><strong>${esc(criterion.label)}</strong>
     ${criterion.must_have ? '<small class="comparison-priority">Must-have</small>' : ''}
     <button type="button" class="secondary" data-action="compare-criterion" data-id="${esc(criterion.id)}"
-      aria-label="Edit criterion: ${esc(criterion.label)}">Edit</button></th>${cells.map(cell => {
+      aria-label="Edit criterion: ${esc(criterion.label)}">Edit</button>${archiveReady ? button('compare-criterion-delete','Delete criterion',criterion.id) : ''}</th>${cells.map(cell => {
       const {column,answer,result} = cell;
       const fact = offerLabels[answer?.offer || 'unknown'];
       return `<td><span class="comparison-status status-${result}">${outcomeLabels[result]}</span>
@@ -69,7 +69,7 @@ export function comparisonView(data,list,state) {
     <div class="comparison-scroll" data-list="${esc(list.id)}" tabindex="0" role="region" aria-label="Vendor comparison, scroll horizontally for more options">
     <table class="comparison-table" aria-label="${esc(list.name)} comparison">
     <thead><tr><th scope="col">Criteria</th>${model.columns.map(c => columnHeader(c,model.mustHaves,data)).join('')}</tr></thead>
-    <tbody>${rows.map(renderRow).join('')}</tbody></table></div>
+    <tbody>${rows.map(row=>renderRow(row,data.archive_ready)).join('')}</tbody></table></div>
     ${!rows.length && model.rows.length ? '<p>No criteria match this filter.</p>' : ''}</section>`;
 }
 
