@@ -38,6 +38,8 @@ select pg_temp.denied(format('select public.issue_planner_invite(null,%L)','some
 select pg_temp.denied(format('select public.issue_planner_invite(%L,%L)',:'original','someone@example.invalid'),'unavailable');
 select pg_temp.denied(format('select public.accept_planner_invite(%L,%L,%L,%L)',:'first','Founder','New wedding','Invalid/Zone'),'time zone');
 select public.accept_planner_invite(:'first','Founder','New wedding','America/Chicago') as fresh \gset
+select pg_temp.assert(public.planner_access(null)->'weddings'->0->>'id'=:'fresh','founder can open the wedding immediately using their existing account');
+select pg_temp.denied(format('select public.issue_planner_invite(%L,%L)',:'fresh','founder@example.invalid'),'already belongs');
 select pg_temp.assert(public.accept_planner_invite(:'first','Changed','Duplicate','UTC')=:'fresh' and (select count(*)=1 from public.weddings),'cross-device retry does not duplicate wedding');
 select pg_temp.assert(public.planner_access(:'first')->>'accepted_wedding'=:'fresh' and (public.planner_access(null)->>'operator')::boolean=false,'repeat link routes to accepted wedding');
 insert into public.vendors(wedding_id,name) values(:'fresh','Venue for new wedding') returning id as vendor \gset

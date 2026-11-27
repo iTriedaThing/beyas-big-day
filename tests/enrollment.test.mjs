@@ -41,6 +41,22 @@ test('invitation screen escapes wedding names, distinguishes joining from foundi
   assert.doesNotMatch(outsider,/issue-planner-invite|accept-planner-invite/);
 });
 
+test('founders can open their wedding directly from a single invitation without entering an email again',()=>{
+  const empty={...single,weddings:[]};
+  assert.match(renderAccess(empty,{origin:base}),/ask your beta operator for a new-wedding invitation/);
+  const pending={...empty,incoming:[{id,wedding:null}]};
+  for(const linkId of [null,id]){
+    const html=renderAccess(pending,{origin:base,linkId});
+    assert.match(html,/Create your private wedding[\s\S]*Create wedding opens your planner/);
+    assert.doesNotMatch(html,/type="email"|choose-planner-invite|issue-planner-invite/);
+  }
+  const both=renderAccess({...pending,weddings:single.weddings,operator:true},{origin:base});
+  assert.match(both,/<\/form>[\s\S]*<details><summary>Manage invitations you send<\/summary>[\s\S]*Recipient’s email address/);
+  const issued={id:'outgoing',email:'other@example.invalid'};
+  assert.match(renderAccess({...pending,operator:true,outgoing:[issued]},{origin:base,issued:issued.id}),/<details open>/);
+  assert.equal(chooseWedding({...single,accepted_wedding:'first'},{wedding:'first',linkId:id}),'first');
+});
+
 test('only a missing enrollment RPC falls back to legacy membership discovery',async()=>{
   const calls=[];
   const api={request:async path=>{
